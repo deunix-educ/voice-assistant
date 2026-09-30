@@ -1,0 +1,30 @@
+# Normalisation des fins de ligne : LF dans le dépôt
+* text=auto eol=lf
+
+# Fichiers texte explicites
+*.c      text
+*.h      text
+*.cpp    text
+*.hpp    text
+*.py     text
+*.md     text
+*.yaml   text
+*.yml    text
+*.json   text
+*.ini    text
+*.cfg    text
+*.toml   text
+*.conf   text
+Makefile text
+
+# Fichiers binaires : pas de conversion, pas de diff textuel
+*.wav    binary
+*.flac   binary
+*.mp3    binary
+*.ogg    binary
+*.onnx   binary
+*.bin    binary
+*.pt     binary
+*.png    binary
+*.jpg    binary
+*.pdf    binary

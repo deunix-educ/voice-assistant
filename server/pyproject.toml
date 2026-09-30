@@ -1,0 +1,62 @@
+[build-system]
+requires = ["setuptools>=69"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "voice-server"
+version = "0.1.0"
+description = "Serveur d'assistant vocal local (MQTT, faster-whisper, Piper)"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+
+# Dépendances épinglées : indispensables dès l'étape 1 (outils série) et l'étape 3 (MQTT).
+dependencies = [
+    "pyserial==3.5",
+    "paho-mqtt==2.1.0",
+    "numpy==2.5.3",  # >= 2.2.2 exigé par pyannote 4 (étape 8) ; testé avec toute la chaîne
+    "PyYAML==6.0.2",
+    "python-dotenv==1.0.1",
+    "soxr==0.5.0.post1",
+]
+
+[project.optional-dependencies]
+# Installées à l'étape 6 (transcription et synthèse vocale).
+# Versions minimales pour Python 3.13 : faster-whisper 1.0 exige av<13 (compilé
+# depuis les sources, sans roue 3.13) et piper-tts 1.2 dépend de piper-phonemize,
+# sans roue au-delà de Python 3.11. piper-tts 1.3+ embarque espeak-ng.
+speech = [
+    "faster-whisper==1.2.1",
+    "piper-tts==1.8.0",
+]
+# Installées à l'étape 8 (diarisation). La VAD de l'étape 7 n'en a pas besoin :
+# Silero est livré avec faster-whisper. torch en version CPU : « make install-diarization »
+# passe par l'index de pytorch.org, sinon pip installe plusieurs Go de bibliothèques CUDA.
+# pyannote 3.3 est antérieur à ce torch ; pyannote 4 exige numpy >= 2.2.2.
+diarization = [
+    "torch==2.14.0",
+    "torchaudio==2.11.0",
+    "pyannote.audio==4.0.7",
+]
+# Étape 13 (mot de réveil) : dépendances d'openwakeword en mode ONNX. openwakeword 0.6.0
+# lui-même s'installe SANS ses dépendances (« make install-wakeword ») : il exige
+# tflite-runtime, qui n'existe pas pour Python 3.13 et ne sert pas en ONNX.
+wakeword = [
+    "onnxruntime==1.30.0",
+    "scipy==1.18.1",
+    "scikit-learn==1.9.1",
+    "tqdm==4.70.1",
+    "requests==2.34.2",
+]
+dev = [
+    "pyright==1.1.389",
+    "pytest==8.3.4",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["voice_server*"]
+
+[tool.pytest.ini_options]
+# Les tests importent voice_server depuis server/, sans installation préalable.
+pythonpath = ["."]
+testpaths = ["tests"]

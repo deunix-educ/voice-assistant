@@ -1,0 +1,283 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 1010" width="1400" height="1010" font-family="DejaVu Sans, Arial, Helvetica, sans-serif">
+    <!-- Schéma de câblage : ESP32-WROOM-32 + INMP441 + MAX98357A + HP + bouton + LED -->
+    <!-- Fond blanc explicite : le schéma reste lisible en thème sombre. -->
+    <rect x="0" y="0" width="1400" height="1010" fill="#ffffff"/>
+
+    <style>
+        .box     { fill:#f7f7f4; stroke:#333333; stroke-width:2; }
+        .title   { font-size:17px; font-weight:bold; fill:#1a1a1a; }
+        .sub     { font-size:12px; fill:#555555; }
+        .pin     { font-size:12px; fill:#1a1a1a; }
+        .pinused { font-size:12px; font-weight:bold; fill:#1a1a1a; }
+        .lbl     { font-size:12px; fill:#333333; }
+        .tick    { stroke:#999999; stroke-width:1.5; }
+        .w       { fill:none; stroke-width:2.4; stroke-linejoin:round; }
+        .gnd     { stroke:#333333; }
+        .v33     { stroke:#cc2222; }
+        .v5      { stroke:#e08214; }
+        .clk     { stroke:#1f6fd0; }
+        .ws      { stroke:#12855d; }
+        .data    { stroke:#8a3fc0; }
+        .warn    { font-size:12px; font-weight:bold; fill:#b30000; }
+    </style>
+
+    <text x="30" y="40" class="title" font-size="22">Assistant vocal local — câblage complet</text>
+    <text x="30" y="62" class="sub">ESP32-WROOM-32 · INMP441 (micro I2S) · MAX98357A (ampli I2S) · haut-parleur · bouton PTT · LED d'état</text>
+
+    <!-- =============================== ESP32 =============================== -->
+    <text x="610" y="100" class="title" text-anchor="middle">ESP32-WROOM-32 (DevKit V1)</text>
+    <rect x="480" y="110" width="260" height="590" rx="6" class="box"/>
+    <text x="610" y="688" class="sub" text-anchor="middle">vue logique — repérez les numéros sérigraphiés</text>
+
+    <!-- colonne gauche -->
+    <g class="pin">
+        <text x="492" y="140">EN</text>
+        <text x="492" y="178">GPIO 36</text>
+        <text x="492" y="216">GPIO 39</text>
+        <text x="492" y="254">GPIO 34</text>
+        <text x="492" y="292">GPIO 35</text>
+        <text x="492" y="330">GPIO 32</text>
+        <text x="492" y="558">GPIO 12</text>
+        <text x="492" y="596">GPIO 13</text>
+        <text x="492" y="634">GND</text>
+    </g>
+    <g class="pinused">
+        <text x="492" y="368">GPIO 33</text>
+        <text x="492" y="406">GPIO 25</text>
+        <text x="492" y="444">GPIO 26</text>
+        <text x="492" y="482">GPIO 27</text>
+        <text x="492" y="520">GPIO 14</text>
+        <text x="492" y="672">VIN (5 V)</text>
+    </g>
+
+    <!-- colonne droite -->
+    <g class="pin" text-anchor="end">
+        <text x="728" y="140">GPIO 23</text>
+        <text x="728" y="216">TX0</text>
+        <text x="728" y="254">RX0</text>
+        <text x="728" y="292">GPIO 21</text>
+        <text x="728" y="330">GPIO 19</text>
+        <text x="728" y="368">GPIO 18</text>
+        <text x="728" y="406">GPIO 5</text>
+        <text x="728" y="444">GPIO 17</text>
+        <text x="728" y="482">GPIO 16</text>
+        <text x="728" y="596">GPIO 15</text>
+    </g>
+    <g class="pinused" text-anchor="end">
+        <text x="728" y="178">GPIO 22</text>
+        <text x="728" y="520">GPIO 4</text>
+        <text x="728" y="558">GPIO 2</text>
+        <text x="728" y="634">GND</text>
+        <text x="728" y="672">3V3</text>
+    </g>
+
+    <!-- ergots de broches -->
+    <g class="tick">
+        <line x1="470" y1="135" x2="480" y2="135"/><line x1="470" y1="173" x2="480" y2="173"/>
+        <line x1="470" y1="211" x2="480" y2="211"/><line x1="470" y1="249" x2="480" y2="249"/>
+        <line x1="470" y1="287" x2="480" y2="287"/><line x1="470" y1="325" x2="480" y2="325"/>
+        <line x1="470" y1="363" x2="480" y2="363"/><line x1="470" y1="401" x2="480" y2="401"/>
+        <line x1="470" y1="439" x2="480" y2="439"/><line x1="470" y1="477" x2="480" y2="477"/>
+        <line x1="470" y1="515" x2="480" y2="515"/><line x1="470" y1="553" x2="480" y2="553"/>
+        <line x1="470" y1="591" x2="480" y2="591"/><line x1="470" y1="629" x2="480" y2="629"/>
+        <line x1="470" y1="667" x2="480" y2="667"/>
+        <line x1="740" y1="135" x2="750" y2="135"/><line x1="740" y1="173" x2="750" y2="173"/>
+        <line x1="740" y1="211" x2="750" y2="211"/><line x1="740" y1="249" x2="750" y2="249"/>
+        <line x1="740" y1="287" x2="750" y2="287"/><line x1="740" y1="325" x2="750" y2="325"/>
+        <line x1="740" y1="363" x2="750" y2="363"/><line x1="740" y1="401" x2="750" y2="401"/>
+        <line x1="740" y1="439" x2="750" y2="439"/><line x1="740" y1="477" x2="750" y2="477"/>
+        <line x1="740" y1="515" x2="750" y2="515"/><line x1="740" y1="553" x2="750" y2="553"/>
+        <line x1="740" y1="591" x2="750" y2="591"/><line x1="740" y1="629" x2="750" y2="629"/>
+        <line x1="740" y1="667" x2="750" y2="667"/>
+    </g>
+
+    <!-- =============================== INMP441 =============================== -->
+    <rect x="150" y="150" width="240" height="200" rx="6" class="box"/>
+    <text x="270" y="178" class="title" text-anchor="middle" font-size="15">INMP441</text>
+    <text x="270" y="196" class="sub" text-anchor="middle">micro I2S — entrée audio</text>
+    <text x="270" y="214" class="warn" text-anchor="middle">3,3 V uniquement</text>
+    <g class="pinused" text-anchor="end">
+        <text x="378" y="240">SD</text>
+        <text x="378" y="268">SCK</text>
+        <text x="378" y="296">WS</text>
+    </g>
+    <g class="pinused">
+        <text x="162" y="344">L/R</text>
+        <text x="196" y="344">GND</text>
+        <text x="236" y="344">VDD</text>
+    </g>
+    <g class="tick">
+        <line x1="390" y1="236" x2="400" y2="236"/>
+        <line x1="390" y1="264" x2="400" y2="264"/>
+        <line x1="390" y1="292" x2="400" y2="292"/>
+        <line x1="170" y1="350" x2="170" y2="360"/>
+        <line x1="200" y1="350" x2="200" y2="360"/>
+        <line x1="240" y1="350" x2="240" y2="360"/>
+    </g>
+
+    <!-- fils du micro -->
+    <polyline class="w data" points="390,236 455,236 455,363 470,363"/>
+    <polyline class="w clk"  points="390,264 440,264 440,401 470,401"/>
+    <polyline class="w ws"   points="390,292 425,292 425,439 470,439"/>
+
+    <polyline class="w gnd" points="170,350 170,790"/>
+    <polyline class="w gnd" points="200,350 200,790"/>
+    <polyline class="w v33" points="240,350 240,750"/>
+    <text x="120" y="378" class="lbl" transform="rotate(-90 120 378)">L/R → GND (canal gauche)</text>
+
+    <!-- =============================== MAX98357A =============================== -->
+    <rect x="880" y="380" width="260" height="240" rx="6" class="box"/>
+    <text x="1010" y="408" class="title" text-anchor="middle" font-size="15">MAX98357A</text>
+    <text x="1010" y="426" class="sub" text-anchor="middle">ampli classe D mono — sortie audio</text>
+    <text x="1010" y="444" class="sub" text-anchor="middle">alimenté en 5 V</text>
+    <g class="pinused">
+        <text x="892" y="475">LRC</text>
+        <text x="892" y="503">BCLK</text>
+        <text x="892" y="531">DIN</text>
+    </g>
+    <g class="pin">
+        <text x="898" y="600">GAIN</text>
+        <text x="950" y="600">SD</text>
+        <text x="996" y="600">GND</text>
+        <text x="1050" y="600">Vin</text>
+    </g>
+    <g class="pinused" text-anchor="end">
+        <text x="1128" y="475">+</text>
+        <text x="1128" y="535">−</text>
+    </g>
+    <g class="tick">
+        <line x1="870" y1="470" x2="880" y2="470"/>
+        <line x1="870" y1="500" x2="880" y2="500"/>
+        <line x1="870" y1="530" x2="880" y2="530"/>
+        <line x1="920" y1="620" x2="920" y2="630"/>
+        <line x1="970" y1="620" x2="970" y2="630"/>
+        <line x1="1020" y1="620" x2="1020" y2="630"/>
+        <line x1="1070" y1="620" x2="1070" y2="630"/>
+        <line x1="1140" y1="470" x2="1150" y2="470"/>
+        <line x1="1140" y1="530" x2="1150" y2="530"/>
+    </g>
+
+    <!-- fils de l'ampli : LRC et BCLK contournent la carte par le bas -->
+    <polyline class="w ws"   points="470,515 430,515 430,715 860,715 860,470 880,470"/>
+    <polyline class="w clk"  points="470,477 415,477 415,730 845,730 845,500 880,500"/>
+    <polyline class="w data" points="750,173 830,173 830,530 880,530"/>
+    <text x="262" y="680" class="lbl" font-size="11">GPIO 14 → LRC (vert)</text>
+    <text x="262" y="696" class="lbl" font-size="11">GPIO 27 → BCLK (bleu)</text>
+    <text x="262" y="716" class="lbl" font-size="11">ces deux fils contournent la carte</text>
+    <text x="760" y="166" class="lbl">GPIO 22 → DIN</text>
+
+    <!-- GAIN et SD laissés libres -->
+    <text x="880" y="650" class="lbl" font-size="11">GAIN : NC → 9 dB</text>
+    <text x="880" y="666" class="lbl" font-size="11">SD : NC → ampli actif</text>
+
+    <polyline class="w gnd" points="1020,620 1020,790"/>
+    <polyline class="w v5"  points="1070,620 1070,830"/>
+
+    <!-- découplage conseillé : C1 (réservoir) + C2 (haute fréquence) -->
+    <g>
+        <polyline class="w v5" points="1070,655 1290,655"/>
+        <circle cx="1070" cy="655" r="4" fill="#333"/>
+
+        <!-- C1 : électrolytique polarisé -->
+        <line x1="1180" y1="655" x2="1180" y2="660" stroke="#333" stroke-width="2"/>
+        <line x1="1164" y1="660" x2="1196" y2="660" stroke="#333" stroke-width="3"/>
+        <line x1="1164" y1="672" x2="1196" y2="672" stroke="#333" stroke-width="3"/>
+        <polyline class="w gnd" points="1180,672 1180,790"/>
+        <text x="1150" y="666" class="lbl" font-size="13">+</text>
+        <text x="1202" y="650" class="pinused">C1</text>
+
+        <!-- C2 : céramique -->
+        <line x1="1260" y1="655" x2="1260" y2="660" stroke="#333" stroke-width="2"/>
+        <line x1="1244" y1="660" x2="1276" y2="660" stroke="#333" stroke-width="3"/>
+        <line x1="1244" y1="672" x2="1276" y2="672" stroke="#333" stroke-width="3"/>
+        <polyline class="w gnd" points="1260,672 1260,790"/>
+        <text x="1282" y="650" class="pinused">C2</text>
+
+        <text x="1000" y="876" class="title" font-size="13">Découplage conseillé</text>
+        <text x="1000" y="900" class="lbl">C1 = 470 µF / 16 V électrolytique, faible ESR</text>
+        <text x="1000" y="920" class="lbl">      polarisé : la bande imprimée est le « − »</text>
+        <text x="1000" y="940" class="lbl">C2 = 100 nF X7R céramique (code 104)</text>
+        <text x="1000" y="960" class="lbl">les deux à moins de 3 cm des broches de l'ampli</text>
+    </g>
+
+    <!-- =============================== haut-parleur =============================== -->
+    <rect x="1210" y="440" width="130" height="120" rx="6" class="box"/>
+    <text x="1275" y="478" class="title" text-anchor="middle" font-size="15">HP</text>
+    <text x="1275" y="500" class="sub" text-anchor="middle">4 Ω / 3 W</text>
+    <text x="1275" y="518" class="sub" text-anchor="middle">(ou 8 Ω / 2 W)</text>
+    <line class="w gnd" x1="1150" y1="470" x2="1210" y2="470"/>
+    <line class="w gnd" x1="1150" y1="530" x2="1210" y2="530"/>
+    <text x="1152" y="462" class="lbl">+</text>
+    <text x="1150" y="586" class="lbl" font-size="11">« − » jamais à la masse</text>
+
+    <!-- =============================== bouton PTT =============================== -->
+    <rect x="900" y="150" width="160" height="56" rx="6" class="box"/>
+    <text x="980" y="172" class="title" text-anchor="middle" font-size="14">Bouton PTT</text>
+    <text x="980" y="192" class="sub" text-anchor="middle">pull-up interne</text>
+    <polyline class="w gnd" points="750,515 800,515 800,177 900,177"/>
+    <polyline class="w gnd" points="1060,177 1120,177 1120,225"/>
+    <text x="756" y="508" class="lbl" font-size="11">→ bouton</text>
+    <g stroke="#333333" stroke-width="2.4" fill="none">
+        <line x1="1108" y1="225" x2="1132" y2="225"/>
+        <line x1="1113" y1="231" x2="1127" y2="231"/>
+        <line x1="1118" y1="237" x2="1122" y2="237"/>
+    </g>
+    <text x="1140" y="231" class="lbl">GND</text>
+
+    <!-- =============================== LED d'état =============================== -->
+    <rect x="900" y="250" width="160" height="56" rx="6" class="box"/>
+    <text x="980" y="272" class="title" text-anchor="middle" font-size="14">LED + 330 Ω</text>
+    <text x="980" y="292" class="sub" text-anchor="middle">optionnelle (LED intégrée)</text>
+    <polyline class="w gnd" points="750,553 815,553 815,277 900,277"/>
+    <polyline class="w gnd" points="1060,277 1120,277 1120,325"/>
+    <text x="756" y="546" class="lbl" font-size="11">→ LED</text>
+    <g stroke="#333333" stroke-width="2.4" fill="none">
+        <line x1="1108" y1="325" x2="1132" y2="325"/>
+        <line x1="1113" y1="331" x2="1127" y2="331"/>
+        <line x1="1118" y1="337" x2="1122" y2="337"/>
+    </g>
+    <text x="1140" y="331" class="lbl">GND</text>
+
+    <!-- =============================== rails =============================== -->
+    <line class="w v33" x1="140" y1="750" x2="1340" y2="750"/>
+    <line class="w gnd" x1="140" y1="790" x2="1340" y2="790"/>
+    <line class="w v5"  x1="140" y1="830" x2="1340" y2="830"/>
+    <text x="140" y="744" class="lbl" fill="#cc2222">3,3 V</text>
+    <text x="140" y="784" class="lbl">GND (masse commune)</text>
+    <text x="140" y="824" class="lbl" fill="#e08214">5 V</text>
+
+    <!-- alimentations prélevées sur l'ESP32 -->
+    <polyline class="w v33" points="750,667 800,667 800,750"/>
+    <polyline class="w gnd" points="750,629 775,629 775,790"/>
+    <polyline class="w v5"  points="470,667 455,667 455,830"/>
+
+    <!-- points de connexion aux rails -->
+    <g fill="#cc2222"><circle cx="800" cy="750" r="4"/><circle cx="240" cy="750" r="4"/></g>
+    <g fill="#333333">
+        <circle cx="775" cy="790" r="4"/><circle cx="170" cy="790" r="4"/>
+        <circle cx="200" cy="790" r="4"/><circle cx="1020" cy="790" r="4"/>
+        <circle cx="1180" cy="790" r="4"/><circle cx="1260" cy="790" r="4"/>
+    </g>
+    <g fill="#e08214"><circle cx="455" cy="830" r="4"/><circle cx="1070" cy="830" r="4"/></g>
+
+    <!-- =============================== légende =============================== -->
+    <rect x="30" y="852" width="520" height="140" rx="6" fill="#ffffff" stroke="#bbbbbb" stroke-width="1.5"/>
+    <text x="44" y="876" class="title" font-size="14">Légende</text>
+    <g class="lbl">
+        <line class="w v5"   x1="44" y1="896" x2="80" y2="896"/><text x="88" y="900">5 V</text>
+        <line class="w v33"  x1="44" y1="918" x2="80" y2="918"/><text x="88" y="922">3,3 V</text>
+        <line class="w gnd"  x1="44" y1="940" x2="80" y2="940"/><text x="88" y="944">masse / logique</text>
+        <line class="w clk"  x1="230" y1="896" x2="266" y2="896"/><text x="274" y="900">horloge bit (SCK / BCLK)</text>
+        <line class="w ws"   x1="230" y1="918" x2="266" y2="918"/><text x="274" y="922">mot (WS / LRC)</text>
+        <line class="w data" x1="230" y1="940" x2="266" y2="940"/><text x="274" y="944">données audio (SD / DIN)</text>
+    </g>
+    <circle cx="52" cy="964" r="4" fill="#333"/>
+    <text x="88" y="968" class="lbl">connexion électrique — deux fils qui se croisent sans point ne sont pas reliés.</text>
+
+    <!-- =============================== avertissements =============================== -->
+    <text x="580" y="876" class="warn">Masse commune obligatoire entre tous les modules.</text>
+    <text x="580" y="900" class="lbl">Câblez hors tension. INMP441 en 3,3 V : le 5 V le détruit.</text>
+    <text x="580" y="920" class="lbl">Fils I2S de 15 cm maximum, éloignés des fils du haut-parleur.</text>
+    <text x="580" y="940" class="lbl">Alimentation 5 V / 2 A : l'ampli demande jusqu'à 1,2 A sur les crêtes.</text>
+    <text x="580" y="960" class="lbl">Détails et vérifications : docs/BROCHAGE.md</text>
+</svg>

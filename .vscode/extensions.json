@@ -1,0 +1,8 @@
+{
+    "recommendations": [
+        "platformio.platformio-ide",
+        "ms-python.python",
+        "ms-pyright.pyright",
+        "redhat.vscode-yaml"
+    ]
+}

@@ -1,0 +1,14 @@
+# Service systemd de l'agent de l'assistant vocal (étape 15b), installé par « make agent-install ».
+[Unit]
+Description=Agent de l'assistant vocal (commandes par MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+ExecStart=/opt/voice-agent/.venv/bin/python /opt/voice-agent/voice_agent.py --config /etc/voice-agent/agent.yaml
+# Relancé s'il s'arrête (broker absent au démarrage, plantage...) : l'agent doit toujours répondre.
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

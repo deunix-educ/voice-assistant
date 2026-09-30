@@ -1,0 +1,37 @@
+# Droits par topic de l'assistant vocal (étape 15), pour Mosquitto 2.x.
+#
+# Tout ce qui n'est pas permis ici est INTERDIT, et Mosquitto refuse en silence :
+# une publication interdite est jetée sans erreur côté client, un abonnement
+# interdit ne reçoit simplement rien. Symptôme typique : « tout est connecté,
+# mais rien ne se passe ».
+
+# Le serveur vocal, et les outils du Makefile qui prennent ses identifiants
+# (mqtt-watch, tone-mqtt, play-mqtt...) : tout voice/, la domotique home/ et les
+# agents Linux agent/ (étape 15b).
+user voice-server
+topic readwrite voice/#
+topic readwrite home/#
+topic readwrite agent/#
+
+# Chaque carte : SES topics seulement. %u est remplacé par le nom d'utilisateur
+# MQTT, qui est donc le DEVICE_ID de la carte (esp32-01). Une carte ne peut ni
+# écouter le micro d'une autre, ni publier sous son nom.
+pattern write voice/%u/state
+pattern write voice/%u/event
+pattern write voice/%u/audio/in
+pattern write voice/%u/audio/stream
+pattern read voice/%u/control
+pattern read voice/%u/audio/out
+
+# Chaque agent Linux (étape 15b) : compte = son id (pc-bureau). Il ne reçoit que SES
+# commandes : sans ces droits, n'importe qui pourrait éteindre toutes les machines.
+pattern write agent/%u/state
+pattern write agent/%u/result
+pattern read agent/%u/command
+
+# Présence du serveur (« online », ou « offline » publié par son testament) :
+# toutes les cartes la lisent, pour couper leur micro quand il disparaît.
+# Au démarrage, Mosquitto prévient « ACL pattern 'voice/server/status' does not
+# contain '%c' or '%u' » : c'est voulu (le même topic pour tous), et la règle
+# s'applique bien (vérifié).
+pattern read voice/server/status

@@ -1,0 +1,13 @@
+{
+    // Copier ce fichier en .vscode/settings.json (ignoré par git).
+    "python.defaultInterpreterPath": "${workspaceFolder}/server/.venv/bin/python",
+    "python.analysis.typeCheckingMode": "standard",
+    "pyright.configFile": "${workspaceFolder}/server/pyrightconfig.json",
+    "editor.insertSpaces": true,
+    "editor.tabSize": 4,
+    "files.eol": "\n",
+    "[makefile]": {
+        "editor.insertSpaces": false
+    },
+    "platformio-ide.useBuiltinPIOCore": true
+}

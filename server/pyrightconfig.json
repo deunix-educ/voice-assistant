@@ -1,0 +1,23 @@
+{
+    "include": [
+        "voice_server",
+        "tests",
+        "../tools",
+        "../agent"
+    ],
+    "exclude": [
+        "**/__pycache__",
+        ".venv",
+        "models"
+    ],
+    "extraPaths": [
+        "../tools",
+        "../agent"
+    ],
+    "venvPath": ".",
+    "venv": ".venv",
+    "pythonVersion": "3.11",
+    "typeCheckingMode": "standard",
+    "reportMissingTypeStubs": false,
+    "reportMissingModuleSource": false
+}

@@ -1,0 +1,39 @@
+# Agent de l'assistant vocal (étape 15b) : UNE machine Linux commandée par la voix.
+#
+# Installé par « make agent-install » dans /etc/voice-agent/agent.yaml (lisible par root
+# seulement : il peut contenir un mot de passe MQTT). Après modification :
+#     sudo systemctl restart voice-agent
+#
+# L'agent n'exécute QUE les actions listées ici. Le serveur n'envoie qu'un nom
+# d'action : il ne peut ni changer la commande, ni lui ajouter un argument.
+
+# Nom de la machine pour l'assistant : topics agent/<id>/..., et même nom dans
+# server/config.yaml (machines.list), où l'on dit comment on l'appelle à voix haute.
+id: pc-bureau
+
+mqtt:
+    host: 192.168.1.104       # adresse IP du broker
+    port: 1883
+    username: ""              # compte MQTT (étape 15), nom = id ; vide : broker anonyme
+    password: ""
+    topic_prefix: agent
+
+# true : l'agent journalise la commande sans l'exécuter. Pour les essais : on peut
+# dire « éteins le PC du bureau » sans l'éteindre.
+dry_run: false
+
+# Nom de l'action (le serveur connaît ces noms : shutdown, reboot, lock ; « wake »
+# est géré par le serveur) → commande, en LISTE : pas de shell, donc pas de « ; »,
+# de « | » ni de « $( ) » possibles. Le service tourne en root.
+actions:
+    shutdown:
+        command: [systemctl, poweroff]
+    reboot:
+        command: [systemctl, reboot]
+    lock:
+        command: [loginctl, lock-sessions]     # verrouille les sessions graphiques ouvertes
+    # Action propre à cette machine : l'ajouter aussi dans server/config.yaml
+    # (machines.actions : mots et phrases) et, si besoin, dans access.rules.machine.
+    # backup:
+    #     command: [/usr/local/bin/sauvegarde.sh]
+    #     timeout_s: 3600

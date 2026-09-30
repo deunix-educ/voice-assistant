@@ -1,0 +1,69 @@
+# --- Secrets (jamais versionnés) ---
+firmware/include/secrets.h
+.env
+*.env
+!.env.example
+*.token
+hf_token*
+*.key
+*.pem
+*.crt
+*.p12
+credentials*
+passwd
+mosquitto/passwd
+agent/agent.yaml
+mosquitto/*.pwd
+
+# --- Données personnelles (voix = donnée biométrique) ---
+docs/test-suivi-perso.txt
+recordings/
+profiles/
+logs/
+server/logs/
+server/profiles/
+server/recordings/
+*.wav
+*.flac
+*.mp3
+*.ogg
+!tools/assets/*.wav
+
+# --- Modèles téléchargés (lourds) ---
+models/
+server/models/
+*.onnx
+*.onnx.json
+*.bin
+*.pt
+*.ckpt
+
+# --- Python ---
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- PlatformIO ---
+.pio/
+firmware/.pio/
+.pioenvs/
+.piolibdeps/
+
+# --- Éditeurs / système ---
+.vscode/*
+!.vscode/extensions.json
+!.vscode/settings.json.example
+.idea/
+*.swp
+*~
+.DS_Store
+
+# --- PlatformIO isolé ---
+.pio-venv/

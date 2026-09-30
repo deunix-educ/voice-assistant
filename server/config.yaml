@@ -1,0 +1,141 @@
+# Configuration du serveur vocal.
+# Les valeurs sensibles (mots de passe, jetons) vont dans .env, jamais ici.
+# Les sections marquées « étape N » ne sont lues qu'à partir de cette étape.
+
+audio:
+    sample_rate: 16000          # Hz, identique dans tout le système
+    bits: 16
+    channels: 1
+    codec: pcm_s16le
+    chunk_ms: 50                # 800 échantillons = 1600 octets
+
+# étape 4 : broker MQTT. Le serveur écoute TOUTES les cartes : voice/+/...
+mqtt:
+    host: localhost             # le broker tourne sur la même machine que le serveur
+    port: 1883
+    keepalive: 30
+    client_id: voice-server     # unique sur le broker
+    topic_prefix: voice
+
+# étape 4 : sessions de parole reçues des ESP32
+sessions:
+    max_seconds: 30             # au-delà, on arrête d'accumuler (garde-fou mémoire)
+    idle_timeout_s: 5           # plus rien reçu depuis 5 s et pas de END : on clôt
+    end_grace_s: 0.5            # après le END, attente des derniers chunks en vol
+
+# chemins relatifs à ce fichier
+storage:
+    recordings_dir: recordings
+    models_dir: models
+
+logging:
+    level: INFO
+    format: "%(asctime)s %(levelname)-7s %(name)s | %(message)s"
+    # étape 15 : copie du journal dans un fichier tournant (3 x 1 Mo), pour
+    # retrouver ce qui s'est passé sur un Raspberry Pi sans écran. Vide : écran seul.
+    file: logs/voice-server.log
+
+# étape 6 : transcription (modèle dans models/whisper/<model>, « make models »)
+stt:
+    model: small                # « base » sur Raspberry Pi 4, « small » sur Pi 5 / PC
+    language: fr
+    compute_type: int8
+    beam_size: 5                # 1 = plus rapide, 5 = plus précis
+    no_speech_threshold: 0.6    # segment écarté au-delà : Whisper invente du texte sur le silence
+
+# étape 6 : synthèse vocale (modèle dans models/piper/<voice>.onnx, « make models »)
+# Piper produit du 22 050 Hz : le serveur rééchantillonne en audio.sample_rate.
+tts:
+    voice: fr_FR-siwis-medium
+    length_scale: 1.0           # > 1 : débit plus lent
+
+# étape 7 : détection d'activité vocale (Silero, fenêtres de 512 échantillons = 32 ms,
+# imposées à 16 kHz). Une session sans parole n'est pas transcrite.
+vad:
+    threshold: 0.5              # probabilité de parole ; on en sort sous 0,35 (hystérésis)
+    min_silence_ms: 500         # pause plus courte : la phrase continue
+    min_speech_ms: 250          # parole plus courte : bruit (clic du bouton), ignorée
+    speech_pad_ms: 150          # marge autour de chaque segment : attaques et fins de mots
+
+# étape 8 : diarisation (qui parle quand), sur la seule parole trouvée par la VAD.
+# Modèle soumis à conditions : les accepter sur huggingface.co, HF_TOKEN dans .env,
+# puis « make models ». Ensuite, tout fonctionne hors ligne ; télémétrie pyannote coupée.
+diarization:
+    enabled: true               # false sur Raspberry Pi 4 (trop lourd) ou sans l'extra « diarization »
+    model: pyannote/speaker-diarization-community-1
+    max_speakers: 3             # borne haute : un assistant de salon, pas une réunion
+
+# étape 9 : identification du locuteur (probabiliste, jamais une sécurité).
+# Profils créés par « make enroll NAME=... », un fichier par personne (donnée biométrique).
+# Nécessite la diarisation : les empreintes viennent de son modèle (WeSpeaker ResNet34).
+speaker:
+    profiles_dir: profiles
+    similarity_threshold: 0.45  # mesuré : vous 0,52 à 0,83 contre votre profil, Piper -0,08 à 0,11
+
+# étape 11 : domotique. Commandes publiées sur <topic_prefix>/<pièce>/<appareil>/set ;
+# la carte exécute en plus celles de sa propre pièce (LED de démonstration).
+home:
+    topic_prefix: home
+    rooms:                      # nom tel qu'on le dit → complément dans les réponses
+        salon: du salon
+        cuisine: de la cuisine
+        chambre: de la chambre
+        salle de bain: de la salle de bain
+        bureau: du bureau
+        garage: du garage
+        entrée: de l'entrée
+    boards:                     # pièce de chaque carte : « allume la lumière » sans pièce = ici
+        esp32-01: salon
+
+# étape 13 : mot de réveil, mains libres. Le serveur demande à chaque carte de lui envoyer
+# son micro en continu (voice/<carte>/audio/stream) et guette le mot. Rien n'est écrit
+# sur disque avant le mot : seules les dernières preroll_ms restent en mémoire.
+# Prononciation à l'anglaise : « Alexa », « Hé Maïcrofte », « Hey Djâr-viss ».
+wake:
+    enabled: true
+    words: [alexa, hey_jarvis, hey_mycroft]   # models/openwakeword/<mot>_v0.1.onnx
+    threshold: 0.5              # mesuré : 90 enregistrements sans le mot, score max 0,07
+    # Seuil propre à un mot, si le journal montre des « mot presque reconnu » répétés.
+    # Plus bas = plus sensible, mais plus de déclenchements intempestifs. Ex. : {hey_jarvis: 0.35}
+    thresholds: {}
+    preroll_ms: 500             # la commande suit souvent le mot sans pause
+    end_silence_ms: 800         # silence qui clôt la commande
+    no_speech_timeout_s: 4      # mot entendu mais rien dit ensuite : on abandonne
+    max_command_s: 10
+    cooldown_s: 20              # écoute suspendue pendant la réponse (jusqu'au bilan « played »)
+
+# étape 14 : droits par profil. La voix n'est JAMAIS une preuve d'identité : une
+# imitation ou un enregistrement peut tromper. Niveaux : complet > standard > limite.
+access:
+    unknown: limite             # voix non reconnue : conversation seulement
+    default: standard           # profil enrôlé absent de users
+    users:                      # noms des profils (make profiles)
+        Denis: complet
+    full_min_score: 0.6         # « complet » seulement si la voix est reconnue nettement
+    rules:                      # niveau minimal par appareil et action ; absent = complet
+        light: {"on": standard, "off": standard}   # guillemets : on/off nus = booléens en YAML
+        shutter: {open: standard, close: standard}
+        door: {open: complet, close: standard}
+        machine: {wake: standard, lock: standard, shutdown: complet, reboot: complet}   # étape 15b
+    confirm: [door.open, machine.shutdown, machine.reboot]   # « Confirmez-vous ? » puis « oui »
+    confirm_timeout_s: 15
+
+# étape 15b : machines Linux du réseau. Chacune fait tourner un agent (agent/voice_agent.py)
+# qui n'exécute QUE les actions de SA liste (/etc/voice-agent/agent.yaml) ; ici, on dit
+# seulement comment on les appelle. « allume » = Wake-on-LAN, envoyé par le serveur
+# (la machine éteinte n'a pas d'agent). Nouvelle action : l'ajouter à l'agent, ici
+# (mots et phrases), puis dans access.rules.machine (sinon : niveau complet exigé).
+machines:
+    topic_prefix: agent         # agent/<machine>/state (retenu), command, result
+    broadcast: 255.255.255.255  # Wake-on-LAN : diffusion sur le réseau local
+    actions:                    # mots sans accents ; « does » et « verb » : phrases dites
+        wake: {words: [allume, allumer, allumez, demarre, demarrer, reveille, reveiller], does: "J'allume", verb: allumer}
+        shutdown: {words: [eteins, eteint, eteindre, eteignez, arrete, arreter, arretez], does: "J'éteins", verb: éteindre}
+        reboot: {words: [redemarre, redemarrer, redemarrez, relance, relancer], does: "Je redémarre", verb: redémarrer}
+        lock: {words: [verrouille, verrouiller, verrouillez], does: "Je verrouille", verb: verrouiller}
+    list:                       # identifiant de l'agent → comment on l'appelle
+        pc-bureau:
+            # Plusieurs mots : « bureau » seul est une pièce. « p c » : Whisper écrit parfois « P.C. ».
+            names: [pc du bureau, p c du bureau, ordinateur du bureau]
+            name: le PC du bureau
+            mac: ""             # ex. "aa:bb:cc:dd:ee:ff" (ip link) pour « allume le PC du bureau »
