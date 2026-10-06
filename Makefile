@@ -89,7 +89,7 @@ mosquitto/passwd:
 mqtt-user:  ## Crée ou change le compte MQTT NAME (voice-server, ou le DEVICE_ID d'une carte) dans mosquitto/passwd
 	@test -n "$(NAME)" || { echo "usage : make mqtt-user NAME=voice-server   puis   make mqtt-user NAME=esp32-01"; exit 1; }
 	@touch mosquitto/passwd && chmod 600 mosquitto/passwd
-	@echo "mot de passe de $(NAME) (idee : openssl rand -hex 16), a reporter dans $(if $(filter voice-server,$(NAME)),server/.env,firmware/include/secrets.h) :"
+	@echo "mot de passe de $(NAME) (idee : openssl rand -hex 16), a reporter dans $(if $(filter voice-server,$(NAME)),server/.env,$(if $(findstring esp32,$(NAME)),firmware/include/secrets.h,/etc/voice-assistant/agent.yaml)) :"
 	@$(MOSQ_PASSWD) $(NAME)
 	@echo "compte $(NAME) enregistre, hache, dans mosquitto/passwd. Installation : make mosquitto-docker (ou mosquitto-config)."
 
@@ -137,6 +137,7 @@ venv:  ## Crée l'environnement virtuel Python
 
 install: venv  ## Installe le serveur Python (dépendances de base)
 	$(PIP) install -e server
+	@test -f server/.env || { cp server/.env.example server/.env; echo "server/.env créé depuis .env.example — renseigner MQTT_USERNAME/PASSWORD et HF_TOKEN si besoin."; }
 
 install-dev: install pio-venv  ## Installe en plus les outils de développement (pyright, pytest, platformio)
 	$(PIP) install -e "server[dev]"
