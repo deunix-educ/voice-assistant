@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+import socket
 import threading
 from collections.abc import Callable
 from typing import Any
@@ -94,6 +95,7 @@ class MqttLink:
         self._client.on_connect = self._on_connect
         self._client.on_disconnect = self._on_disconnect
         self._client.on_message = self._on_message
+        self._client.on_socket_open = self._on_socket_open
         self._client.reconnect_delay_set(min_delay=1, max_delay=10)
         if self._presence is not None:
             # Testament : publié PAR LE BROKER si le serveur disparaît sans prévenir
@@ -164,6 +166,15 @@ class MqttLink:
         for pattern in self._topic_handlers:
             client.subscribe(pattern, qos=1)
             logger.info("abonne a %s (QoS 1)", pattern)
+
+    def _on_socket_open(self, client: mqtt.Client, userdata: Any, sock: Any) -> None:
+        # Étape 16 : sans cela, le noyau retient les petits paquets en attendant un accusé de
+        # réception (algorithme de Nagle) ; un chunk audio de 1600 octets tient en deux paquets,
+        # et le second attendrait. Un flux temps réel envoie tout de suite.
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except (OSError, AttributeError):  # socket TLS ou WebSocket enveloppé : option indisponible
+            logger.debug("TCP_NODELAY non applique")
 
     def _on_disconnect(self, client: mqtt.Client, userdata: Any,
                        flags: mqtt.DisconnectFlags, reason_code: ReasonCode,

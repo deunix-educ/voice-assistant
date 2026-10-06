@@ -42,6 +42,9 @@ stt:
     compute_type: int8
     beam_size: 5                # 1 = plus rapide, 5 = plus précis
     no_speech_threshold: 0.6    # segment écarté au-delà : Whisper invente du texte sur le silence
+    # étape 16 : fils de calcul de Whisper ; 0 = défaut de la bibliothèque (4). Mesuré sur un PC
+    # à 20 cœurs logiques : 4 → 1,08 s, 8 → 0,98 s, 16 → 1,29 s (pire). Sur un Pi 5 : laisser 0.
+    cpu_threads: 0
 
 # étape 6 : synthèse vocale (modèle dans models/piper/<voice>.onnx, « make models »)
 # Piper produit du 22 050 Hz : le serveur rééchantillonne en audio.sample_rate.
@@ -64,6 +67,11 @@ diarization:
     enabled: true               # false sur Raspberry Pi 4 (trop lourd) ou sans l'extra « diarization »
     model: pyannote/speaker-diarization-community-1
     max_speakers: 3             # borne haute : un assistant de salon, pas une réunion
+    # étape 16 : en dessous de cette durée de PAROLE, on suppose une seule personne (une
+    # commande) : son empreinte vocale est calculée directement, sans chercher qui parle quand.
+    # Mesuré sur 113 sessions réelles : 0,02 s au lieu de 0,42 s, même identification
+    # (écart de score médian 0,001). Au-delà, diarisation complète. 0 : toujours la diarisation.
+    direct_below_s: 4.0
 
 # étape 9 : identification du locuteur (probabiliste, jamais une sécurité).
 # Profils créés par « make enroll NAME=... », un fichier par personne (donnée biométrique).

@@ -61,6 +61,7 @@ class SttSettings:
     beam_size: int           # 1 = décodage glouton, plus rapide ; 5 = plus précis
     no_speech_threshold: float
     model_dir: Path          # dossier du modèle téléchargé par « make models »
+    cpu_threads: int = 0     # fils de calcul de Whisper ; 0 : défaut de la bibliothèque (4)
 
 
 @dataclass(frozen=True)
@@ -90,6 +91,7 @@ class DiarizationSettings:
     model: str               # dépôt Hugging Face du pipeline
     max_speakers: int
     model_dir: Path          # copie locale téléchargée par « make models »
+    direct_below_s: float = 0.0   # parole plus courte : empreinte directe, sans diarisation (étape 16)
 
 
 @dataclass(frozen=True)
@@ -285,6 +287,7 @@ def load_settings(path: Path) -> Settings:
             beam_size=int(stt["beam_size"]),
             no_speech_threshold=float(stt["no_speech_threshold"]),
             model_dir=models_dir / "whisper" / str(stt["model"]),
+            cpu_threads=int(stt.get("cpu_threads", 0)),
         ),
         tts=TtsSettings(
             voice=str(tts["voice"]),
@@ -303,6 +306,7 @@ def load_settings(path: Path) -> Settings:
             max_speakers=int(diarization["max_speakers"]),
             # « pyannote/speaker-diarization-community-1 » → models/pyannote/speaker-diarization-community-1
             model_dir=models_dir / "pyannote" / str(diarization["model"]).split("/")[-1],
+            direct_below_s=float(diarization.get("direct_below_s", 0.0)),
         ),
         speaker=SpeakerSettings(
             profiles_dir=(base / str(speaker["profiles_dir"])).resolve(),

@@ -35,8 +35,8 @@ Prompt de référence : `prompt-assistant-vocal-esp32.md` (rôle, style, feuille
 | 13 | Wake word (openWakeWord) | **fait** (serveur + firmware) | **oui (2026-09-30)** |
 | 14 | Multi-utilisateurs | **fait** (serveur seul) | **oui (2026-09-30)** |
 | 15 | Fiabilisation | **fait** (broker + serveur + firmware) | **oui (2026-09-30)** |
-| 15b | **Agents Linux** (ajout utilisateur) : commander des machines du réseau | **fait** (serveur + agent) | en attente |
-| 16 | Optimisation | à faire | — |
+| 15b | **Agents Linux** (ajout utilisateur) : commander des machines du réseau | **fait** (serveur + agent) | **oui (2026-10-06)** |
+| 16 | Optimisation | **fait** (serveur + option broker ; firmware inchangé) | en attente |
 
 **Règle absolue** : ne jamais démarrer l'étape N+1 avant validation explicite de l'étape N.
 
@@ -132,6 +132,10 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | Règles par appareil/action ; **action absente = niveau complet** | 2026-09-30 | on ne permet jamais par oubli |
 | Actions sensibles (`confirm: [door.open]`) : question, puis « oui »/« non » **de la même personne**, sur la même carte, en 15 s ; toute autre phrase abandonne la demande | 2026-09-30 | garde-fou pour la porte et pour les agents Linux (15b) |
 | Confirmation : acceptée si la voix est reconnue comme le demandeur, **ou** si elle est sous le seuil mais que le demandeur reste le **profil le plus proche** avec `access.confirm_min_score` (**0,25**) ; voix reconnue comme quelqu'un d'autre : refusée | 2026-10-06 | mesuré : 6 « oui » seuls de Denis (~0,7 s de parole) à 0,29-0,47, 5 sous le seuil 0,45 ; autres profils face à Denis ≤ 0,12 (profils entiers, surtout voix de synthèse : à revoir avec de vraies personnes) |
+| Étape 16 : **parole < `diarization.direct_below_s` (4 s) = une seule personne** → `Diarizer.embed()` au lieu de la diarisation, Whisper sans mots horodatés | 2026-10-06 | mesuré sur 113 sessions réelles : 0,02 s contre 0,42 s, écart de score médian +0,001, 4 verdicts changés (2 en mieux, 2 en moins bien, tous au seuil) ; aucune session récente à 2 voix. Contrepartie : deux voix dans une phrase courte ne sont plus séparées |
+| Étape 16 : parallélisme diarisation / Whisper **écarté** | 2026-10-06 | mesuré : séquentiel 1,43-1,59 s, parallèle 1,34-1,56 s ; chacun ralentit l'autre (Whisper 1,1 → 1,4 s, diarisation 0,4 → 0,8 s), **même dans deux processus** : saturation du processeur, pas le verrou de Python |
+| Étape 16 : `beam_size` 5 gardé, `stt.cpu_threads` 0 (défaut, 4 fils) | 2026-10-06 | beam 1 : −0,05 s et 1 texte différent sur 16 ; fils : 4 → 1,08 s, 8 → 0,98 s, 16 → 1,29 s sur le PC ; l'encodeur de Whisper (fenêtre fixe de 30 s) domine |
+| Étape 16 : cache de synthèse (64 phrases), fin de commande cherchée toutes les 100 ms, `TCP_NODELAY` côté serveur (`on_socket_open`) et broker (`set_tcp_nodelay true`) | 2026-10-06 | cache : 0,03-0,14 s par réponse répétée ; l'effet de `TCP_NODELAY` sur « premier son a ~240 ms » est une **hypothèse** (Nagle + accusés retardés de l'ESP32), à confirmer sur la carte |
 | Droits appliqués au **dernier locuteur** de la session | 2026-09-30 | c'est lui qui attend la réponse (cohérent avec l'étape 10) |
 | Broker : `allow_anonymous false` + `password_file` + `acl_file` ; comptes `voice-server` (voice/# et home/# en lecture-écriture) et **un par carte, nom = DEVICE_ID** (`pattern ... voice/%u/...`) | 2026-09-30 | micro inaudible et commandes impossibles pour le reste du réseau ; une carte ne peut ni écouter ni usurper une autre (vérifié sur broker jetable) |
 | Outils `make mqtt-*` : identifiants du serveur relus dans `server/.env` (`-include`), recettes en `@` | 2026-09-30 | pas de compte supplémentaire ; mot de passe jamais affiché par make ; mot de passe hexadécimal (`#`, `$` cassent make) |
@@ -202,6 +206,7 @@ server/voice_server/wake_word.py   WakeWordDetector (openWakeWord ONNX)         
 server/voice_server/hands_free.py  HandsFreeListener : veille / commande / réponse [étape 13]
 server/voice_server/access_control.py  AccessPolicy : niveaux, refus, confirmation [étape 14]
 tools/enroll.py                    make enroll / profiles / forget              [étape 9]
+tools/latency_check.py             make latency : avant/après sur enregistrements réels [étape 16]
 tools/say.py                       make say : phrase Piper en WAV + MP3 (téléphone) [étape 14]
 docs/MOSQUITTO.md                  broker : installation, pièges, vérification  [étape 3]
 firmware/src/main.cpp              boucle PTT → I2S → série                     [étape 1]
@@ -830,3 +835,15 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   profil le plus proche (`confirm_min_score: 0.25`, `AccessPolicy.resolve(..., closest, score)`, le
   pipeline transmet `Identification.closest`). 214 tests, pyright 0 erreur. Serveur à relancer
   (config.yaml lu au démarrage). Étape 15b : essais en cours, pas encore validée.
+- **2026-10-06** — **Étape 15b validée** par l'utilisateur (« Agents Linux ok, réponse dans les logs »).
+  Étape 16 lancée : optimisation.
+- **2026-10-06** — **Étape 16 écrite** (serveur seul, plus une option du broker ; firmware inchangé).
+  Point de départ mesuré sur 63 échanges réels : réponse prête en 1,54 s (Whisper 1,06 + diarisation
+  0,40 + synthèse 0,07). Bancs dans le scratchpad, sur les enregistrements réels en lecture seule.
+  Retenu : empreinte directe pour une parole courte, Whisper sans mots dans ce cas, cache de synthèse,
+  vérification de fin de commande à 100 ms, `TCP_NODELAY`. Écarté sur mesures : parallélisme, beam 1,
+  16 fils. `make latency COUNT=60` : **1,62 s → 1,09 s (−0,53 s, 33 %)**, même texte 54/54, même
+  identification 50/54. 220 tests, pyright 0 erreur. `voice.conf` validé sur un broker jetable
+  (supprimé). **À faire par l'utilisateur** : `make mosquitto-config` sur le Pi pour `set_tcp_nodelay`.
+  **Non fait, à décider** : numéros de séquence des chunks (§3.4 du prompt, change le protocole et le
+  firmware) ; `end_silence_ms` (800 ms d'attente après la phrase, le plus gros délai restant).

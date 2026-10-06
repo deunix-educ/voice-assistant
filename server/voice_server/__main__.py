@@ -11,6 +11,7 @@
 Étape 13 : mains libres : « Alexa, allume la lumière », sans le bouton.
 Étape 14 : droits par profil (complet / standard / limite), confirmation des actions sensibles.
 Étape 15 : présence + testament (les cartes coupent leur micro si le serveur meurt), journal fichier.
+Étape 16 : latence : empreinte directe pour une parole courte, cache de synthèse, envois sans attente.
 Étape 15b : machines Linux : « éteins le PC du bureau » → agent/pc-bureau/command ; « allume » → Wake-on-LAN.
 """
 
@@ -136,6 +137,7 @@ def make_assistant(settings: Settings, resampler: AudioResampler, sender: AudioS
         publisher=link,
         controller=CommandRouter(HomeController(settings.home, link), machines) if link is not None else None,
         policy=AccessPolicy(settings.access, settings.home, settings.machines),
+        direct_below_s=settings.diarization.direct_below_s,
     )
     return pipeline.handle
 

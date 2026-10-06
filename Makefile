@@ -16,6 +16,7 @@ OUT         ?= recordings/test.wav
 TONE        ?= 440
 TEXT        ?= Quelle heure est-il ?
 LAST        ?= 5
+COUNT       ?= 30
 JITTER      ?= 0
 VOICE       ?= fr_FR-tom-medium
 SPEAKER     ?=
@@ -41,7 +42,7 @@ MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de s
 
 .DEFAULT_GOAL := help
 .PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech install-diarization install-wakeword models \
-        say speech-check transcribe vad vad-all diarize diarize-demo enroll profiles forget run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
+        say latency speech-check transcribe vad vad-all diarize diarize-demo enroll profiles forget run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
         fw-monitor clean
 
 ## ------------------------------------------------------------------ aide
@@ -162,6 +163,9 @@ models:  ## Télécharge les modèles de config.yaml dans server/models (étapes
 say:  ## Fait dire [WAKE (voix anglaise) puis] TEXT par VOICE (SPEAKER) : WAV + MP3 dans SAY_OUT, pour un téléphone
 	$(PY) tools/say.py "$(TEXT)" --voice $(VOICE) $(if $(SPEAKER),--speaker $(SPEAKER)) \
 		$(if $(WAKE),--wake "$(WAKE)" --wake-voice $(WAKE_VOICE)) --out $(SAY_OUT)
+
+latency:  ## Mesure la latence du serveur avant/après l'étape 16 sur les COUNT derniers enregistrements
+	$(PY) tools/latency_check.py --last $(COUNT)
 
 speech-check:  ## Synthèse, transcription et RÉPONSE de l'assistant à TEXT, sans ESP32 (étape 6)
 	$(PY) tools/speech_check.py "$(TEXT)"

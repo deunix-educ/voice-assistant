@@ -129,3 +129,30 @@ def test_per_word_threshold_and_near_miss(caplog: pytest.LogCaptureFixture, tts:
 
     assert all(detection is None for detection in found)
     assert "presque reconnu « alexa »" in caplog.text
+
+
+def test_repeated_answer_comes_from_the_cache(tts: TextToSpeech) -> None:
+    """Étape 16 : une réponse déjà dite n'est pas resynthétisée (Piper varie d'un essai à l'autre)."""
+    first = tts.synthesize("J'allume la lumière du salon.")
+    again = tts.synthesize("J'allume la lumière du salon.")
+    other = tts.synthesize("J'éteins la lumière du salon.")
+
+    assert again.pcm == first.pcm and again.audio_s == first.audio_s
+    assert again.elapsed_s < 0.005 < first.elapsed_s
+    assert other.pcm != first.pcm
+
+
+def test_cache_keeps_a_bounded_number_of_answers(tts: TextToSpeech, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("voice_server.text_to_speech.CACHE_PHRASES", 2)
+    fresh = TextToSpeech(SETTINGS.tts, AudioResampler(SETTINGS.audio), SETTINGS.audio.sample_rate)
+    for text in ("Un.", "Deux.", "Trois."):
+        fresh.synthesize(text)
+    assert fresh.synthesize("Trois.").elapsed_s < 0.005   # encore en mémoire
+    assert fresh.synthesize("Un.").elapsed_s > 0.005      # la plus ancienne est sortie
+
+
+def test_transcription_without_word_times(tts: TextToSpeech, stt: SpeechToText) -> None:
+    """Étape 16 : sans horodatage des mots, même texte, pas de mots."""
+    pcm = tts.synthesize("Fermez la porte du garage.").pcm
+    plain = stt.transcribe(pcm, words=False)
+    assert plain.words == () and "garage" in plain.text.lower()

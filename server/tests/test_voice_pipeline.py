@@ -42,6 +42,11 @@ class FakeVad:
 class FakeDiarizer:
     def __init__(self) -> None:
         self.lengths: list[int] = []
+        self.embedded: list[int] = []
+
+    def embed(self, pcm: bytes) -> np.ndarray:
+        self.embedded.append(len(pcm))
+        return np.array([1.0, 0.0], dtype=np.float32)  # la voix que FakeIdentifier reconnaît
 
     def diarize(self, pcm: bytes) -> Diarization:
         self.lengths.append(len(pcm))
@@ -67,10 +72,12 @@ class FakeStt:
         self.words = words
         self.calls = 0
         self.lengths: list[int] = []
+        self.with_words: list[bool] = []
 
-    def transcribe(self, pcm: bytes) -> Transcript:
+    def transcribe(self, pcm: bytes, words: bool = True) -> Transcript:
         self.calls += 1
         self.lengths.append(len(pcm))
+        self.with_words.append(words)
         return Transcript(text=self.text, audio_s=len(pcm) / 32000, elapsed_s=0.8, dropped=self.dropped,
                           words=self.words)
 
@@ -133,11 +140,12 @@ def session(duration_s: float = 1.5, peak_dbfs: float = -12.0) -> SessionResult:
 def pipeline(stt: FakeStt, tts: FakeTts, player: FakePlayer, vad: FakeVad | None = None,
              diarizer: FakeDiarizer | None = None, identifier: FakeIdentifier | ShortYesIdentifier | None = None,
              publisher: FakePublisher | None = None, assistant: EchoAssistant | None = None,
-             controller: FakeController | None = None, policy: AccessPolicy | None = None) -> VoicePipeline:
+             controller: FakeController | None = None, policy: AccessPolicy | None = None,
+             direct_below_s: float = 0.0) -> VoicePipeline:
     ticks = iter([10.0, 11.2])  # début, puis réponse prête 1,2 s plus tard
     return VoicePipeline(vad or FakeVad(), stt, assistant or EchoAssistant(), tts, player, diarizer=diarizer,
                          identifier=identifier, publisher=publisher, controller=controller, policy=policy,
-                         read=lambda result: PCM, clock=lambda: next(ticks))
+                         read=lambda result: PCM, clock=lambda: next(ticks), direct_below_s=direct_below_s)
 
 
 def test_full_turn() -> None:
@@ -355,3 +363,39 @@ def test_short_yes_confirms_only_from_the_closest_voice(closest: str, score: flo
     assert second is not None
     assert [call[1] for call in controller.calls] == ([door] if executed else [])
     assert second.answer == ("J'ouvre la porte du salon." if executed else "Seul Denis peut confirmer. J'annule.")
+
+
+def test_short_speech_is_identified_without_diarization() -> None:
+    """Étape 16 : 0,5 s de parole = une commande, une personne : empreinte directe, pas de diarisation."""
+    stt, diarizer = FakeStt("allume la lumière"), FakeDiarizer()
+
+    turn = pipeline(stt, FakeTts(), FakePlayer(), diarizer=diarizer, identifier=FakeIdentifier(),
+                    direct_below_s=4.0).handle(session())
+
+    assert turn is not None
+    assert diarizer.lengths == [] and diarizer.embedded == [16000]  # même audio que Whisper
+    assert stt.with_words == [False]                                 # mots non horodatés : inutiles ici
+    assert (turn.speakers, turn.names) == (1, ("Denis",))
+    assert [(u.speaker, u.text, u.score) for u in turn.utterances] == [("Denis", "allume la lumière", 0.8)]
+
+
+def test_long_speech_still_goes_through_diarization() -> None:
+    """Au-delà du seuil, plusieurs personnes ont pu parler : diarisation complète, mots horodatés."""
+    stt, diarizer = FakeStt("bonjour", words=DENIS_WORDS), FakeDiarizer()
+
+    turn = pipeline(stt, FakeTts(), FakePlayer(), diarizer=diarizer, identifier=FakeIdentifier(),
+                    direct_below_s=0.4).handle(session())  # la fausse VAD garde 0,5 s de parole
+
+    assert turn is not None and turn.speakers == 2
+    assert diarizer.embedded == [] and diarizer.lengths == [16000] and stt.with_words == [True]
+
+
+def test_short_speech_applies_rights_to_the_identified_person() -> None:
+    """Le raccourci ne change rien aux droits : Denis reconnu, porte → confirmation demandée."""
+    events: list[str] = []
+    turn = pipeline(FakeStt("ouvre la porte"), FakeTts(), FakePlayer(events), diarizer=FakeDiarizer(),
+                    identifier=FakeIdentifier(), assistant=EchoAssistant(DeviceCommand("open", "door", "salon")),
+                    controller=FakeController(events), policy=AccessPolicy(ACCESS, HOME),
+                    direct_below_s=4.0).handle(session())
+
+    assert turn is not None and turn.answer.startswith("Confirmez-vous")

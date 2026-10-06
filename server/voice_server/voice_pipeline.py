@@ -7,6 +7,7 @@ VAD → diarisation → identification → transcription → qui a dit quoi → 
 from __future__ import annotations
 
 import logging
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -30,6 +31,7 @@ from voice_server.voice_activity import VadResult
 logger = logging.getLogger(__name__)
 
 MIN_SPEECH_S = 0.3  # en dessous, appui trop bref pour contenir un mot
+DIRECT_LABEL = "SPEAKER_00"  # étiquette de l'unique locuteur d'une parole courte (étape 16)
 
 
 class SpeechDetector(Protocol):
@@ -42,6 +44,8 @@ class SpeakerSplitter(Protocol):
     """Ce que la boucle attend de la diarisation."""
 
     def diarize(self, pcm: bytes) -> Diarization: ...
+
+    def embed(self, pcm: bytes) -> np.ndarray: ...
 
 
 class Identifier(Protocol):
@@ -64,7 +68,7 @@ class Policy(Protocol):
 class Transcriber(Protocol):
     """Ce que la boucle attend de la transcription."""
 
-    def transcribe(self, pcm: bytes) -> Transcript: ...
+    def transcribe(self, pcm: bytes, words: bool = True) -> Transcript: ...
 
 
 class Responder(Protocol):
@@ -130,9 +134,12 @@ class VoicePipeline:
         policy: Policy | None = None,
         read: Callable[[SessionResult], bytes] = lambda result: read_pcm(result.path),
         clock: Callable[[], float] = time.monotonic,
+        direct_below_s: float = 0.0,
     ) -> None:
         """
         Args:
+            direct_below_s: parole plus courte que cela : une seule personne supposée, empreinte
+                directe au lieu de la diarisation (étape 16) ; 0 : toujours la diarisation.
             diarizer: diarisation, None pour s'en passer (Raspberry Pi 4).
             identifier: identification ; sans diarisation, elle n'a pas d'empreintes.
             publisher: publie « qui a dit quoi » sur voice/<carte>/transcript (None : journal seul).
@@ -153,6 +160,7 @@ class VoicePipeline:
         self._policy = policy
         self._read = read
         self._clock = clock
+        self._direct_below_s = direct_below_s
 
     def handle(self, result: SessionResult) -> Turn | None:
         """Répond à la session ; None si elle était trop courte pour être une question."""
@@ -170,23 +178,30 @@ class VoicePipeline:
         if vad.has_speech:
             logger.info("%s : parole %.2f s sur %.2f s (segments %s s), VAD %.0f ms", result.device,
                         vad.speech_s, vad.total_s, vad.bounds(), vad.elapsed_s * 1000)
+            # Parole courte = une commande, une seule personne : son empreinte suffit (20 ms au lieu
+            # de 400 ms de diarisation), et Whisper n'a pas à horodater les mots (étape 16).
+            direct = self._diarizer is not None and vad.speech_s < self._direct_below_s
+            if self._diarizer is not None and direct:
+                speakers = 1
+                verdicts = self._identify_directly(result.device, vad.speech_pcm, self._diarizer)
             # La diarisation et Whisper reçoivent le même audio : leurs instants concordent (étape 10).
-            if self._diarizer is not None:
+            elif self._diarizer is not None:
                 diarization = self._diarizer.diarize(vad.speech_pcm)
                 speakers = len(diarization.speakers)
                 logger.info("%s : %d locuteur(s) : %s, diarisation %.2f s", result.device, speakers,
                             diarization.describe() or "aucun tour", diarization.elapsed_s)
                 turns = diarization.turns
                 verdicts = self._identify(result.device, diarization)
-            transcript = self._stt.transcribe(vad.speech_pcm)
+            transcript = self._stt.transcribe(vad.speech_pcm, words=not direct)
         else:
+            direct = False
             logger.warning("%s : session %s sans parole (VAD, crete %.1f dBFS)", result.device,
                            result.session_id, result.levels.peak_dbfs)
             transcript = Transcript(text="", audio_s=0.0, elapsed_s=0.0)
         if transcript.dropped:
             logger.warning("%s : hallucination ecartee : %s", result.device, " | ".join(transcript.dropped))
 
-        utterances = self._who_said_what(result, transcript, turns, verdicts)
+        utterances = self._who_said_what(result, transcript, turns, verdicts, direct)
         # On répond à la dernière personne qui a parlé : c'est elle qui attend la réponse,
         # et ce sont ses droits qui s'appliquent.
         last = utterances[-1] if utterances else None
@@ -243,12 +258,30 @@ class VoicePipeline:
             f"{speaker} = {verdict.describe()}" for speaker, verdict in verdicts.items()))
         return verdicts
 
-    def _who_said_what(self, result: SessionResult, transcript: Transcript,
-                       turns: tuple[SpeakerTurn, ...], verdicts: dict[str, Identification]) -> list[Utterance]:
+    def _identify_directly(self, device: str, pcm: bytes, diarizer: SpeakerSplitter) -> dict[str, Identification]:
+        """Parole courte : une empreinte pour tout l'extrait, un seul verdict (étape 16)."""
+        began = time.monotonic()
+        embedding = diarizer.embed(pcm)
+        if self._identifier is None:
+            return {}
+        verdict = self._identifier.identify(embedding)
+        logger.info("%s : 1 locuteur (parole courte, empreinte directe %.0f ms) : %s", device,
+                    (time.monotonic() - began) * 1000, verdict.describe())
+        return {DIRECT_LABEL: verdict}
+
+    def _who_said_what(self, result: SessionResult, transcript: Transcript, turns: tuple[SpeakerTurn, ...],
+                       verdicts: dict[str, Identification], direct: bool = False) -> list[Utterance]:
         """Interventions de la session, journalisées et publiées sur voice/<carte>/transcript."""
         if not transcript.text:
             return []
-        utterances = attribute(transcript.words, turns, verdicts)
+        verdict = verdicts.get(DIRECT_LABEL) if direct else None
+        if verdict is not None:
+            # Une seule personne : tout le texte est à elle, sans horodatage des mots.
+            score = None if math.isnan(verdict.score) else verdict.score
+            utterances = [Utterance(speaker=verdict.label, text=transcript.text, start_s=0.0,
+                                    end_s=transcript.audio_s, score=score, label=DIRECT_LABEL)]
+        else:
+            utterances = attribute(transcript.words, turns, verdicts)
         if not utterances:  # texte sans horodatage des mots : une seule intervention anonyme
             utterances = [Utterance(speaker=UNKNOWN, text=transcript.text, start_s=0.0,
                                     end_s=transcript.audio_s, score=None)]

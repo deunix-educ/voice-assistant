@@ -42,7 +42,9 @@ from voice_server.wake_word import Detection
 
 logger = logging.getLogger(__name__)
 
-CHECK_EVERY_CHUNKS = 5      # recherche du silence final toutes les 250 ms d'audio
+# Recherche du silence final toutes les 100 ms d'audio (250 ms avant l'étape 16) : la fin de la
+# commande est vue en moyenne 75 ms plus tôt, pour une VAD de quelques ms sur le tampon.
+CHECK_EVERY_CHUNKS = 2
 COMMAND_AFTER_WAKE_S = 0.3  # parole qui continue au moins 0,3 s après le mot : il y a une commande
 STREAM_LOST_S = 2.0         # plus aucun chunk pendant une commande : la carte a décroché
 

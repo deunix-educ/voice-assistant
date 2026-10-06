@@ -295,6 +295,7 @@ make tone-esp TONE=440                 # son pur sur le haut-parleur de l'ESP32 
 make run                               # assistant : répond à chaque question (étape 6)
 make speech-check TEXT="Quelle heure est-il ?"  # transcription et synthèse, sans ESP32
 make say WAKE="Hey Mycroft" TEXT="Ouvre la porte du salon." VOICE=fr_FR-tom-medium  # WAV + MP3 pour un téléphone
+make latency                           # latence du serveur avant/après l'étape 16, sur de vrais enregistrements
 make transcribe OUT=server/recordings/<fichier>.wav
 make vad OUT=server/recordings/<fichier>.wav   # parole trouvée par la VAD (étape 7)
 make vad-all                           # VAD sur tous les enregistrements du serveur
@@ -317,7 +318,33 @@ make lint                           # typage pyright
 
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
-Étape courante : **15b — machines Linux du réseau**. Les étapes 1 à 15 sont validées.
+Étape courante : **16 — optimisation**. Les étapes 1 à 15b sont validées.
+
+### Étape 16 — optimisation
+
+Mesurer d'abord, optimiser ensuite : `make latency` rejoue les derniers enregistrements
+avec l'ancienne puis la nouvelle chaîne. Sur 54 commandes réelles (PC, 20 cœurs logiques) :
+**1,6 s → 1,1 s** entre la fin de la phrase et le texte reconnu, même texte 54 fois sur 54.
+
+| Optimisation | Gain mesuré | Réglage |
+|---|---|---|
+| Parole courte : empreinte vocale directe, sans diarisation | 0,40 s (0,42 → 0,02 s) | `diarization.direct_below_s: 4.0` |
+| Parole courte : Whisper sans horodatage des mots | 0,10 s | automatique |
+| Réponses déjà dites gardées en mémoire (cache de synthèse) | 0,03 à 0,14 s | automatique, 64 phrases |
+| Fin de commande cherchée toutes les 100 ms (250 avant) | 0,075 s en moyenne | — |
+| Envois réseau immédiats (`TCP_NODELAY` : serveur, broker) | à mesurer : `premier son a … ms` | `set_tcp_nodelay true` dans `voice.conf` |
+
+Pistes mesurées puis **écartées** : diarisation et Whisper en parallèle (0,03 à 0,10 s seulement :
+les deux calculs saturent le processeur, même dans deux processus), `beam_size: 1` (0,05 s, et
+un texte différent sur 16), 16 fils pour Whisper (plus lent que 4).
+
+1. Sur le Raspberry Pi (broker) : `git pull`, puis `make mosquitto-config`.
+2. `make run`, quelques commandes : le journal affiche `1 locuteur (parole courte, empreinte
+   directe 20 ms)` et `reponse prete en ~1,1 s` (1,5 s avant).
+3. `make latency` : avant, après, gain, et les identifications qui diffèrent.
+
+Une parole de moins de 4 s est supposée venir d'**une seule personne**. Deux voix dans une
+phrase courte ne sont plus séparées (elles l'étaient à l'étape 10) ; au-delà de 4 s, rien ne change.
 
 ### Étape 15b — machines Linux du réseau
 
