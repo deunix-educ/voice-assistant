@@ -140,6 +140,36 @@ make fw-upload SERIAL_PORT=/dev/ttyUSB0
 NVS takes priority over `secrets.h`. To start from scratch, force the portal
 with the PTT button (or erase the NVS with `esptool.py erase_flash`).
 
+**Raspberry Pi 5 Wi-Fi access point: WPA2 required**
+
+If the board connects to the Pi's access point (NetworkManager, here `RPI5-AP`),
+it must use **WPA2**. By default the ESP32 refuses any network below WPA2, and
+an access point created by NetworkManager may be WPA1. Recommended fix, on the Pi:
+
+```bash
+nmcli -t -f NAME,TYPE con show --active        # name of the access point connection
+sudo nmcli con modify "RPI5-AP" wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn \
+     wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+     802-11-wireless.band bg 802-11-wireless.channel 6
+sudo nmcli con down "RPI5-AP" && sudo nmcli con up "RPI5-AP"
+```
+
+`proto rsn` enforces WPA2; channel 6 avoids channels 12 and 13, which the ESP32
+handles poorly. The Wi-Fi password does not change. On this network the Pi is
+`10.42.0.1`: that is the broker address to enter in the portal.
+
+Diagnosis on the serial monitor (`make fw-monitor`, or minicom at **921600 baud**):
+
+| Board message | Cause | Fix |
+|---|---|---|
+| `Reason: 211` | access point uses WPA1 | switch it to WPA2 (above) |
+| `Reason: 15 - 4WAY_HANDSHAKE_TIMEOUT` | wrong Wi-Fi password stored in the board | re-enter it in the portal; the Pi confirms it: `sudo journalctl -u wpa_supplicant \| grep PSK-MISMATCH` |
+| `# mqtt : echec (code 5)` | MQTT account missing on the broker, or different password | `make mqtt-user NAME=esp32-01` on the Pi |
+| unreadable bytes when the button is pressed | MQTT not connected: the session goes over the serial cable | check the `# wifi` and `# mqtt` lines at boot |
+
+> In the portal, both password fields (Wi-Fi and MQTT) are always shown empty:
+> retype them on every save, a field left empty erases the stored password.
+
 ---
 
 ### 4.2 Python server

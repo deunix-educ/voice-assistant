@@ -140,6 +140,38 @@ make fw-upload SERIAL_PORT=/dev/ttyUSB0
 La NVS reste prioritaire sur `secrets.h`. Pour repartir de zéro, forcez le
 portail avec le bouton PTT (ou effacez la NVS avec `esptool.py erase_flash`).
 
+**Point d'accès Wi-Fi du Raspberry Pi 5 : WPA2 obligatoire**
+
+Si la carte se connecte au point d'accès du Pi (NetworkManager, ici `RPI5-AP`),
+celui-ci doit être en **WPA2**. L'ESP32 refuse par défaut tout réseau en dessous
+de WPA2, et un point d'accès créé par NetworkManager peut être en WPA1.
+Correction recommandée, sur le Pi :
+
+```bash
+nmcli -t -f NAME,TYPE con show --active        # nom de la connexion du point d'accès
+sudo nmcli con modify "RPI5-AP" wifi-sec.key-mgmt wpa-psk wifi-sec.proto rsn \
+     wifi-sec.pairwise ccmp wifi-sec.group ccmp \
+     802-11-wireless.band bg 802-11-wireless.channel 6
+sudo nmcli con down "RPI5-AP" && sudo nmcli con up "RPI5-AP"
+```
+
+`proto rsn` impose WPA2 ; le canal 6 évite les canaux 12 et 13, mal gérés par
+l'ESP32. Le mot de passe du Wi-Fi ne change pas. Sur ce réseau, le Pi a
+l'adresse `10.42.0.1` : c'est l'adresse du broker à saisir dans le portail.
+
+Diagnostic au moniteur série (`make fw-monitor`, ou minicom à **921600 bauds**) :
+
+| Message de la carte | Cause | Correctif |
+|---|---|---|
+| `Reason: 211` | point d'accès en WPA1 | le passer en WPA2 (ci-dessus) |
+| `Reason: 15 - 4WAY_HANDSHAKE_TIMEOUT` | mot de passe Wi-Fi enregistré dans la carte faux | le ressaisir dans le portail ; le Pi le confirme : `sudo journalctl -u wpa_supplicant \| grep PSK-MISMATCH` |
+| `# mqtt : echec (code 5)` | compte MQTT absent du broker, ou mot de passe différent | `make mqtt-user NAME=esp32-01` sur le Pi |
+| des octets illisibles à l'appui du bouton | MQTT non connecté : la session part par le câble série | voir les lignes `# wifi` et `# mqtt` au démarrage |
+
+> Dans le portail, les deux champs de mot de passe (Wi-Fi et MQTT) s'affichent
+> toujours vides : retapez-les à chaque enregistrement, un champ laissé vide
+> efface le mot de passe enregistré.
+
 ---
 
 ### 4.2 Serveur Python
