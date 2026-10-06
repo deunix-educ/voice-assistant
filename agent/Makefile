@@ -40,4 +40,4 @@ uninstall:  ## Retire le service et le programme (garde la configuration)
 	sudo rm -rf $(PREFIX)
 
 log:  ## Journal de l'agent installé (Ctrl-C pour quitter)
-	journalctl -u voice-agent -f
+	sudo journalctl -u voice-agent -f

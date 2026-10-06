@@ -12,7 +12,7 @@
 id: pc-bureau
 
 mqtt:
-    host: 192.168.1.104       # adresse IP du broker
+    host: 192.168.1.200       # adresse IP du broker (Raspberry Pi 5)
     port: 1883
     username: ""              # compte MQTT (étape 15), nom = id ; vide : broker anonyme
     password: ""

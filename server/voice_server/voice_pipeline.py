@@ -57,7 +57,8 @@ class Policy(Protocol):
 
     def ask(self, board: str, command: Command, speaker: str | None) -> None: ...
 
-    def resolve(self, board: str, text: str, speaker: str | None) -> Resolution | None: ...
+    def resolve(self, board: str, text: str, speaker: str | None, closest: str | None = None,
+                score: float | None = None) -> Resolution | None: ...
 
 
 class Transcriber(Protocol):
@@ -191,7 +192,9 @@ class VoicePipeline:
         last = utterances[-1] if utterances else None
         speaker = last.speaker if last is not None and last.speaker != UNKNOWN else None
         score = last.score if last is not None else None
-        reply, refused = self._decide(result.device, transcript.text, speaker, score)
+        verdict = verdicts.get(last.label) if last is not None else None
+        closest = verdict.closest if verdict is not None else None
+        reply, refused = self._decide(result.device, transcript.text, speaker, score, closest)
         answer = reply.text
         if reply.command is not None and self._controller is not None:
             # La commande part avant la réponse parlée : la lumière s'allume pendant que la carte le dit.
@@ -209,13 +212,14 @@ class VoicePipeline:
                     stt_s=transcript.elapsed_s, tts_s=speech.elapsed_s, ready_s=ready_s,
                     answer_s=speech.audio_s)
 
-    def _decide(self, board: str, text: str, speaker: str | None, score: float | None) -> tuple[Reply, bool]:
+    def _decide(self, board: str, text: str, speaker: str | None, score: float | None,
+                closest: str | None = None) -> tuple[Reply, bool]:
         """Réponse et commande autorisée ; True si une commande a été refusée ou mise en attente."""
         if not text:
             return Reply(NOTHING_HEARD), False
         if self._policy is not None:
             # Une confirmation attendue passe avant tout : « oui » n'est pas une requête.
-            resolution = self._policy.resolve(board, text, speaker)
+            resolution = self._policy.resolve(board, text, speaker, closest, score)
             if resolution is not None:
                 return Reply(resolution.answer, resolution.command), resolution.command is None
         reply = self._assistant.respond(text, speaker, board)

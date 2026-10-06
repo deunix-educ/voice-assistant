@@ -142,8 +142,15 @@ class AccessPolicy:
         if speaker is not None:
             self._pending[board] = _Pending(command, speaker, self._clock() + self._access.confirm_timeout_s)
 
-    def resolve(self, board: str, text: str, speaker: str | None) -> Resolution | None:
-        """Réponse à une confirmation en attente ; None : pas de confirmation, requête ordinaire."""
+    def resolve(self, board: str, text: str, speaker: str | None, closest: str | None = None,
+                score: float | None = None) -> Resolution | None:
+        """Réponse à une confirmation en attente ; None : pas de confirmation, requête ordinaire.
+
+        Args:
+            speaker: personne reconnue, None si la voix n'atteint pas le seuil d'identification.
+            closest: profil le plus proche, même sous le seuil.
+            score: similarité avec ce profil.
+        """
         pending = self._pending.pop(board, None)
         if pending is None or self._clock() > pending.expires:
             return None
@@ -152,13 +159,29 @@ class AccessPolicy:
         said_no = any(word in NO for word in words)
         if not (said_yes or said_no):
             return None  # autre chose : la demande en attente est abandonnée, on traite la nouvelle
-        if speaker != pending.speaker:
+        if speaker != pending.speaker and not self._probably(pending.speaker, speaker, closest, score):
             logger.warning("%s : confirmation de %s refusee, donnee par %s", board, pending.speaker,
-                           speaker or "une voix inconnue")
+                           speaker or f"une voix inconnue (proche de {closest}, {self._shown(score)})")
             return Resolution(f"Seul {pending.speaker} peut confirmer. J'annule.", None)
+        if speaker != pending.speaker:
+            logger.info("%s : confirmation de %s acceptee a %s : voix trop courte pour le seuil, mais "
+                        "profil le plus proche", board, pending.speaker, self._shown(score))
         if said_no:
             return Resolution("D'accord, j'annule.", None)
         return Resolution(self._announce(pending.command), pending.command)
+
+    def _probably(self, expected: str, speaker: str | None, closest: str | None, score: float | None) -> bool:
+        """Voix non reconnue, mais la personne attendue reste la plus proche : assez pour un « oui ».
+
+        Un « oui » dure moins d'une seconde, trop peu pour une empreinte nette. La demande,
+        elle, a été reconnue au seuil normal quelques secondes plus tôt, sur la même carte.
+        """
+        return (speaker is None and closest == expected and score is not None
+                and score >= self._access.confirm_min_score)
+
+    @staticmethod
+    def _shown(score: float | None) -> str:
+        return "?" if score is None else f"{score:.2f}"
 
     def _request(self, command: Command) -> str:
         """« ouvrir la porte du salon », « éteindre le PC du bureau »."""

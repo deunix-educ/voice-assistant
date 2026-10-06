@@ -202,7 +202,7 @@ exposed.
 # 1. Copy the agent/ directory from the Raspberry Pi
 scp -r /home/rpi5/voice-assistant/agent/ user@desktop-pc:~/voice-agent-install/
 
-# 2. Install the service (creates /opt/voice-agent/, /etc/voice-agent/, systemd unit)
+# 2. Install the service (creates /opt/voice-agent/, /etc/voice-assistant/, systemd unit)
 cd ~/voice-agent-install
 sudo make install
 
@@ -214,7 +214,7 @@ make mosquitto-docker              # or mosquitto-config — reloads the broker
 # 4. Configure the agent on the target machine
 sudo nano /etc/voice-assistant/agent.yaml
 #   id: pc-bureau                    ← name used in MQTT topics
-#   mqtt.host: 192.168.1.104         ← broker IP address
+#   mqtt.host: 192.168.1.200         ← broker IP address
 #   mqtt.username: pc-bureau         ← same value as id (empty if anonymous broker)
 #   mqtt.password: <password>        ← generated in step 3 (empty if anonymous broker)
 #   dry_run: false                   ← true to test without executing anything

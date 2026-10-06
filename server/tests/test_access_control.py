@@ -105,6 +105,29 @@ def test_someone_else_cannot_confirm(policy: AccessPolicy) -> None:
     assert resolution.answer.startswith("Seul Denis")
 
 
+def test_short_yes_is_accepted_when_the_requester_stays_the_closest_voice(policy: AccessPolicy) -> None:
+    """Essai réel du 2026-10-06 : « OUI » de Denis à 0,35, sous le seuil d'identification."""
+    policy.ask("esp32-01", DOOR_OPEN, "Denis")
+    resolution = policy.resolve("esp32-01", "OUI", None, closest="Denis", score=0.35)
+    assert resolution is not None and resolution.command == DOOR_OPEN
+
+
+@pytest.mark.parametrize(
+    ("speaker", "closest", "score"),
+    [
+        (None, "Denis", 0.12),      # trop loin de Denis : n'importe qui
+        (None, "Jessica", 0.40),    # plus proche de quelqu'un d'autre
+        (None, None, None),         # pas d'empreinte du tout
+        ("Jessica", "Jessica", 0.8),  # reconnue comme quelqu'un d'autre
+    ],
+)
+def test_short_yes_from_someone_else_is_refused(policy: AccessPolicy, speaker: str | None,
+                                                closest: str | None, score: float | None) -> None:
+    policy.ask("esp32-01", DOOR_OPEN, "Denis")
+    resolution = policy.resolve("esp32-01", "oui", speaker, closest=closest, score=score)
+    assert resolution is not None and resolution.command is None
+
+
 def test_confirmation_expires(policy: AccessPolicy, clock: Clock) -> None:
     policy.ask("esp32-01", DOOR_OPEN, "Denis")
     clock.now += 16

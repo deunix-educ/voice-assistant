@@ -131,7 +131,7 @@ def session(duration_s: float = 1.5, peak_dbfs: float = -12.0) -> SessionResult:
 
 
 def pipeline(stt: FakeStt, tts: FakeTts, player: FakePlayer, vad: FakeVad | None = None,
-             diarizer: FakeDiarizer | None = None, identifier: FakeIdentifier | None = None,
+             diarizer: FakeDiarizer | None = None, identifier: FakeIdentifier | ShortYesIdentifier | None = None,
              publisher: FakePublisher | None = None, assistant: EchoAssistant | None = None,
              controller: FakeController | None = None, policy: AccessPolicy | None = None) -> VoicePipeline:
     ticks = iter([10.0, 11.2])  # début, puis réponse prête 1,2 s plus tard
@@ -324,3 +324,34 @@ def test_sensitive_command_waits_for_yes() -> None:
                       controller=controller, policy=policy).handle(session())
     assert second is not None and second.command == door
     assert [call[1] for call in controller.calls] == [door]
+
+
+class ShortYesIdentifier:
+    """Un « oui » de 0,7 s : sous le seuil, mais Denis reste le profil le plus proche (ou non)."""
+
+    def __init__(self, closest: str, score: float) -> None:
+        self._verdict = Identification(name=None, score=score, closest=closest)
+
+    def identify(self, embedding: np.ndarray) -> Identification:
+        return self._verdict
+
+
+@pytest.mark.parametrize(("closest", "score", "executed"), [("Denis", 0.35, True), ("Jessica", 0.35, False),
+                                                           ("Denis", 0.10, False)])
+def test_short_yes_confirms_only_from_the_closest_voice(closest: str, score: float, executed: bool) -> None:
+    """Essai réel du 2026-10-06 : « OUI » de Denis à 0,35 refusé comme « voix inconnue »."""
+    events: list[str] = []
+    controller = FakeController(events)
+    policy = AccessPolicy(ACCESS, HOME)
+    door = DeviceCommand("open", "door", "salon")
+    pipeline(FakeStt("ouvre la porte", words=DENIS_WORDS), FakeTts(), FakePlayer(events),
+             diarizer=FakeDiarizer(), identifier=FakeIdentifier(), assistant=EchoAssistant(door),
+             controller=controller, policy=policy).handle(session())
+
+    second = pipeline(FakeStt("oui", words=(Word(" oui", 0.0, 0.1),)), FakeTts(), FakePlayer(events),
+                      diarizer=FakeDiarizer(), identifier=ShortYesIdentifier(closest, score),
+                      assistant=EchoAssistant(), controller=controller, policy=policy).handle(session())
+
+    assert second is not None
+    assert [call[1] for call in controller.calls] == ([door] if executed else [])
+    assert second.answer == ("J'ouvre la porte du salon." if executed else "Seul Denis peut confirmer. J'annule.")

@@ -3,7 +3,7 @@
 
 L'agent se connecte au broker MQTT et attend des NOMS d'action sur
 agent/<id>/command. Il n'exécute que les actions de SON fichier de configuration
-(/etc/voice-agent/agent.yaml), chacune étant une commande fixe, sans shell et
+(/etc/voice-assistant/agent.yaml), chacune étant une commande fixe, sans shell et
 sans argument venu du réseau : un message forgé ne peut rien lancer d'autre.
 
     agent/<id>/state    {"status":"online","actions":[...]}  retenu ; testament « offline »
@@ -16,7 +16,7 @@ jamais exécutée à son retour.
 Autonome : il ne dépend que de paho-mqtt et PyYAML, pas du serveur.
 
 Exemples :
-    python3 voice_agent.py --config /etc/voice-agent/agent.yaml
+    python3 voice_agent.py --config /etc/voice-assistant/agent.yaml
     make agent-run          # sur le PC de développement, en mode essai (dry_run)
 """
 
@@ -252,7 +252,7 @@ class VoiceAgent:
 def main(argv: list[str]) -> int:
     """Lance l'agent jusqu'à Ctrl-C ou SIGTERM (arrêt du service)."""
     parser = argparse.ArgumentParser(description="agent de l'assistant vocal pour une machine Linux")
-    parser.add_argument("--config", type=Path, default=Path("/etc/voice-agent/agent.yaml"))
+    parser.add_argument("--config", type=Path, default=Path("/etc/voice-assistant/agent.yaml"))
     args = parser.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)-7s %(message)s")
     try:

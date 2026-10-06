@@ -22,7 +22,9 @@ SPEAKER     ?=
 SAY_OUT     ?= recordings/voix-test/phrase.wav
 WAKE        ?=
 WAKE_VOICE  ?= en_GB-alan-medium
-MQTT_HOST   ?= 192.168.1.104
+# Adresse du broker : UN seul réglage, mqtt.host de server/config.yaml, relu ici pour les
+# cibles mqtt-* (surcharge ponctuelle : make mqtt-watch MQTT_HOST=...).
+MQTT_HOST   ?= $(shell awk '/^mqtt:/{m=1;next} m && $$1=="host:"{print $$2; exit}' server/config.yaml)
 MSG         ?= {"cmd":"ping"}
 MOSQ_DIR    ?= $(HOME)/srv/mosquitto
 MOSQ_COMPOSE ?= $(HOME)/srv/docker-compose.mosquitto.yml

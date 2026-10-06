@@ -57,6 +57,10 @@ def with_mac(mac: str = MAC) -> MachinesSettings:
         ("Éteins le P.C. du bureau.", "shutdown"),
         ("Tu peux redémarrer l'ordinateur du bureau ?", "reboot"),
         ("Verrouille le PC du bureau", "lock"),
+        # Mots anglais, tels que Whisper les a écrits à l'essai réel du 2026-10-06.
+        ("Locke le PC du bureau", "lock"),
+        ("Reboot le PC du bureau", "reboot"),
+        ("Shut down le PC du bureau", "shutdown"),
         ("Allume le PC du bureau", "wake"),
         ("Le PC du bureau", None),
     ],

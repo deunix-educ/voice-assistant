@@ -11,7 +11,7 @@ audio:
 
 # étape 4 : broker MQTT. Le serveur écoute TOUTES les cartes : voice/+/...
 mqtt:
-    host: localhost             # le broker tourne sur la même machine que le serveur
+    host: 10.42.0.1         # broker du Raspberry Pi 5 (comptes exigés : server/.env) ; relu par le Makefile
     port: 1883
     keepalive: 30
     client_id: voice-server     # unique sur le broker
@@ -119,9 +119,14 @@ access:
         machine: {wake: standard, lock: standard, shutdown: complet, reboot: complet}   # étape 15b
     confirm: [door.open, machine.shutdown, machine.reboot]   # « Confirmez-vous ? » puis « oui »
     confirm_timeout_s: 15
+    # Un « oui » seul dure ~0,7 s : trop court pour atteindre speaker.similarity_threshold
+    # (mesuré : Denis 0,29 à 0,47 ; les autres profils face à Denis : 0,12 au plus).
+    # La confirmation est donc acceptée si le demandeur reste le profil le PLUS PROCHE,
+    # avec au moins ce score. Une voix reconnue comme quelqu'un d'autre est refusée.
+    confirm_min_score: 0.25
 
 # étape 15b : machines Linux du réseau. Chacune fait tourner un agent (agent/voice_agent.py)
-# qui n'exécute QUE les actions de SA liste (/etc/voice-agent/agent.yaml) ; ici, on dit
+# qui n'exécute QUE les actions de SA liste (/etc/voice-assistant/agent.yaml) ; ici, on dit
 # seulement comment on les appelle. « allume » = Wake-on-LAN, envoyé par le serveur
 # (la machine éteinte n'a pas d'agent). Nouvelle action : l'ajouter à l'agent, ici
 # (mots et phrases), puis dans access.rules.machine (sinon : niveau complet exigé).
@@ -129,10 +134,12 @@ machines:
     topic_prefix: agent         # agent/<machine>/state (retenu), command, result
     broadcast: 255.255.255.255  # Wake-on-LAN : diffusion sur le réseau local
     actions:                    # mots sans accents ; « does » et « verb » : phrases dites
+        # Un mot par entrée, tel que Whisper l'écrit : « lock » devient souvent « Locke »,
+        # « shutdown » devient « Shut down » (d'où « shut »).
         wake: {words: [allume, allumer, allumez, demarre, demarrer, reveille, reveiller], does: "J'allume", verb: allumer}
-        shutdown: {words: [eteins, eteint, eteindre, eteignez, arrete, arreter, arretez], does: "J'éteins", verb: éteindre}
-        reboot: {words: [redemarre, redemarrer, redemarrez, relance, relancer], does: "Je redémarre", verb: redémarrer}
-        lock: {words: [verrouille, verrouiller, verrouillez], does: "Je verrouille", verb: verrouiller}
+        shutdown: {words: [eteins, eteint, eteindre, eteignez, arrete, arreter, arretez, shutdown, shut], does: "J'éteins", verb: éteindre}
+        reboot: {words: [redemarre, redemarrer, redemarrez, relance, relancer, reboot, reboote, rebooter], does: "Je redémarre", verb: redémarrer}
+        lock: {words: [verrouille, verrouiller, verrouillez, lock, locke, locker, loque], does: "Je verrouille", verb: verrouiller}
     list:                       # identifiant de l'agent → comment on l'appelle
         pc-bureau:
             # Plusieurs mots : « bureau » seul est une pièce. « p c » : Whisper écrit parfois « P.C. ».

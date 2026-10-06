@@ -136,6 +136,7 @@ class AccessSettings:
     rules: dict[str, dict[str, str]]     # appareil → action → niveau minimal
     confirm: tuple[str, ...]             # « door.open » : demande « oui » avant d'exécuter
     confirm_timeout_s: float
+    confirm_min_score: float = 0.25      # « oui » trop court pour le seuil : accepté si le demandeur reste le plus proche
 
 
 @dataclass(frozen=True)
@@ -333,6 +334,7 @@ def load_settings(path: Path) -> Settings:
                    for device, actions in dict(access["rules"]).items()},
             confirm=tuple(str(item) for item in access.get("confirm") or ()),
             confirm_timeout_s=float(access["confirm_timeout_s"]),
+            confirm_min_score=float(access.get("confirm_min_score", 0.25)),
         ),
         machines=_machines(data),
         recordings_dir=(base / str(storage["recordings_dir"])).resolve(),

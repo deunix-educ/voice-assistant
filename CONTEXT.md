@@ -61,6 +61,8 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | Périphériques I2S | I2S0 = micro (RX), I2S1 = ampli (TX) | duplex séparé, pas de conflit d'horloges |
 | Broches | voir `firmware/include/config.h` | aucune broche de strapping (0, 2, 5, 12, 15) sur l'audio |
 | Broker de dev : conteneur `mosquitto_services-mosquitto-1`, compose `~/srv/docker-compose.mosquitto.yml`, config montée `~/srv/mosquitto/config/mosquitto.conf` ; **IP du PC = 192.168.1.104** (et non .0.104) | 2026-09-29 | constaté sur la machine |
+| **Broker = Raspberry Pi 5, 192.168.1.200**, comptes exigés (anonyme refusé) ; un seul réglage : `mqtt.host` de `server/config.yaml`, relu par le Makefile (`MQTT_HOST`) | 2026-10-06 | décision utilisateur (« broker sur pi5 ») ; le conteneur local du PC de dev (192.168.1.104, anonyme) tourne encore mais n'est plus utilisé |
+| Carte : Wi-Fi et broker en **NVS**, réglés par le portail `VoiceAssist-Config` (http://192.168.4.1, bouton PTT tenu 3 s au démarrage) ; `secrets.h` n'est plus qu'un repli si la NVS est vide (`WifiConfig`, ajouté par l'utilisateur) | 2026-10-06 | changer de broker = portail, pas recompilation |
 | MQTT : état JSON **retenu** + testament `{"status":"offline"}` retenu QoS 1, keepalive 10 s | 2026-09-29 | `offline` en 15 s max après coupure ; serveur informé même s'il démarre après l'ESP32 |
 | Wi-Fi : `setSleep(false)` | 2026-09-29 | le modem endormi ajoute 100 ms+ de latence : incompatible avec le flux audio |
 | Partitions `huge_app.csv` (3 Mo d'application, pas d'OTA) | 2026-09-29 | Wi-Fi + MQTT = 74 % de la partition par défaut |
@@ -129,6 +131,7 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | Niveau complet seulement si **score ≥ 0,6** (`full_min_score`), sinon rétrogradé en standard | 2026-09-30 | la voix n'est pas une preuve : une identification de justesse ne doit pas tout ouvrir |
 | Règles par appareil/action ; **action absente = niveau complet** | 2026-09-30 | on ne permet jamais par oubli |
 | Actions sensibles (`confirm: [door.open]`) : question, puis « oui »/« non » **de la même personne**, sur la même carte, en 15 s ; toute autre phrase abandonne la demande | 2026-09-30 | garde-fou pour la porte et pour les agents Linux (15b) |
+| Confirmation : acceptée si la voix est reconnue comme le demandeur, **ou** si elle est sous le seuil mais que le demandeur reste le **profil le plus proche** avec `access.confirm_min_score` (**0,25**) ; voix reconnue comme quelqu'un d'autre : refusée | 2026-10-06 | mesuré : 6 « oui » seuls de Denis (~0,7 s de parole) à 0,29-0,47, 5 sous le seuil 0,45 ; autres profils face à Denis ≤ 0,12 (profils entiers, surtout voix de synthèse : à revoir avec de vraies personnes) |
 | Droits appliqués au **dernier locuteur** de la session | 2026-09-30 | c'est lui qui attend la réponse (cohérent avec l'étape 10) |
 | Broker : `allow_anonymous false` + `password_file` + `acl_file` ; comptes `voice-server` (voice/# et home/# en lecture-écriture) et **un par carte, nom = DEVICE_ID** (`pattern ... voice/%u/...`) | 2026-09-30 | micro inaudible et commandes impossibles pour le reste du réseau ; une carte ne peut ni écouter ni usurper une autre (vérifié sur broker jetable) |
 | Outils `make mqtt-*` : identifiants du serveur relus dans `server/.env` (`-include`), recettes en `@` | 2026-09-30 | pas de compte supplémentaire ; mot de passe jamais affiché par make ; mot de passe hexadécimal (`#`, `$` cassent make) |
@@ -144,7 +147,7 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | « Allume » = **Wake-on-LAN** envoyé par le serveur (paquet magique UDP port 9, `broadcast` configurable), si agent hors ligne et MAC connue | 2026-09-30 | machine éteinte = pas d'agent |
 | Phrase qui **nomme une machine** traitée avant la domotique ; noms de plusieurs mots (« pc du bureau ») | 2026-09-30 | « éteins le PC du bureau » ≠ « éteins la lumière du bureau » (bureau est une pièce) |
 | Droits : `access.rules.machine` (wake/lock standard, shutdown/reboot complet), `confirm: [machine.shutdown, machine.reboot]` ; `MachineCommand` porte ses phrases (`said`, `asked`) | 2026-09-30 | réutilise étape 14 sans changer `DeviceCommand` ; `CommandRouter` aiguille vers Home/MachineController |
-| Service systemd **root** (`/opt/voice-agent`, `/etc/voice-agent/agent.yaml` 0600), `Restart=always` ; `agent/` autonome (`make -C agent install`) | 2026-09-30 | poweroff/reboot exigent root ; il suffit de copier le dossier sur la machine |
+| Service systemd **root** (`/opt/voice-agent`, `/etc/voice-assistant/agent.yaml` 0600), `Restart=always` ; `agent/` autonome (`make -C agent install`) | 2026-09-30 | poweroff/reboot exigent root ; il suffit de copier le dossier sur la machine |
 | `dry_run` dans agent.yaml ; `make agent-run` crée `agent/agent.yaml` en mode essai | 2026-09-30 | tester « éteins le PC » sur le PC de développement sans l'éteindre |
 | **TLS non activé** (option de l'étape 15) ; **numéros de séquence** reportés à l'étape 16 (§3.4 du prompt : « phase 16 ») | 2026-09-30 | comptes + ACL ferment l'accès au micro ; TLS = certificats + ~40 Ko de RAM ESP32, à décider par l'utilisateur |
 | `make run` = **mode assistant** ; `make run-echo` = étape 5 | 2026-09-29 | une file + un fil de travail : les sessions sont traitées une à une, hors du fil réseau |
@@ -212,8 +215,9 @@ mosquitto/passwd                   comptes hachés (make mqtt-user), NON version
 server/tests/test_mqtt_link.py     présence, refus du broker, journal fichier   [étape 15]
 server/voice_server/machine_control.py  MachineController, phrases, Wake-on-LAN  [étape 15b]
 server/voice_server/command_router.py   CommandRouter : domotique / machines     [étape 15b]
+firmware/src/WifiConfig.*          Wi-Fi + broker en NVS, portail AP/HTTP (utilisateur) [2026-10-06]
 agent/voice_agent.py               agent Linux autonome (liste blanche, dry_run) [étape 15b]
-agent/agent.yaml.example           modèle de /etc/voice-agent/agent.yaml         [étape 15b]
+agent/agent.yaml.example           modèle de /etc/voice-assistant/agent.yaml         [étape 15b]
 agent/voice-agent.service, agent/Makefile  service systemd, make -C agent install [étape 15b]
 server/tests/test_machine_control.py, test_voice_agent.py                      [étape 15b]
 server/                            squelette Python (modules à partir de l'étape 3)
@@ -230,29 +234,58 @@ TLS (option de l'étape 15, non activée).
 1. Lire ce fichier, puis `README.md`.
 2. `make help` liste toutes les cibles.
 3. Vérifier l'étape en cours dans le tableau du §2, et **ne rien faire au-delà**.
-4. Contrôle rapide de l'environnement : `make test` (98 tests), `make lint`, `make fw-check`.
+4. Contrôle rapide de l'environnement : `make test` (203 tests), `make lint`, `make fw-check`.
 
-### État au 2026-09-29 au soir (fin de session)
+### État au 2026-09-30 au soir (fin de session)
 
-- (état du 2026-09-29 au soir, dépassé : l'étape 9 a été validée le 2026-09-30, voir le journal.)
-- Étape 9 alors écrite et testée hors ligne. Étapes 1 à 8 validées.
-- Tout était vert à l'arrêt : 98 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,7 %,
-  Flash 31,3 %), `pip check` propre. Aucun serveur lancé.
-- `server/.venv` contient les extras `speech` et `diarization` (torch CPU) ; `server/models/`
-  contient whisper `small`, la voix Piper et le pipeline pyannote (accès HF réglé, `HF_TOKEN` dans
-  `server/.env` — **secret de l'utilisateur, ne jamais le modifier ni l'afficher**).
-- **Aucun profil vocal** : `server/profiles/` n'existe pas encore (mes essais étaient dans le scratchpad).
-- Firmware inchangé depuis l'étape 5 (déjà sur la carte). Broker : conteneur Docker de l'utilisateur, 192.168.1.104.
+- **Étapes 1 à 15 validées.** Étape **15b écrite**, vérifiée hors carte (broker jetable), **pas encore
+  essayée par l'utilisateur**. Ne pas commencer l'étape 16 avant sa validation explicite.
+- Vérifié à l'arrêt : 203 tests, pyright 0 erreur (tools/ et agent/ inclus), `make fw-check`
+  SUCCESS 0 avertissement (RAM 36,7 %, Flash 31,5 %). Git : `main`, 1 commit, arbre propre.
+  Aucun serveur, agent ni conteneur de test lancé (`voice-acl-test`, `voice-agent-test` supprimés).
+- Broker : **Raspberry Pi 5, 192.168.1.200, comptes exigés** (depuis le 2026-10-06). Le serveur s'y
+  connecte (`voice-server`, `server/.env`). Le conteneur local (192.168.1.104, anonyme) n'est plus utilisé.
+- Firmware : la version **étape 13** est sur la carte (essais mains libres réussis) ; téléversement de
+  la version **étape 15** (chien de garde, présence serveur) **non confirmé**. Les deux fonctionnent
+  avec le serveur actuel, qui publie sa présence.
+- `server/.venv` : extras `speech`, `diarization` (torch CPU), `wakeword` ; `server/models/` complet ;
+  `HF_TOKEN` dans `server/.env` — **secret de l'utilisateur, ne jamais le modifier ni l'afficher**.
+  Ne jamais toucher `firmware/include/secrets.h` (utiliser `make fw-check`).
+- 6 profils vocaux : Denis (complet), Gilles, Jessica, Pierre, Siwis, Tom (standard). Phrases de
+  test au téléphone : `recordings/voix-test/` (`make say`, `WAKE="Hey Mycroft"` = voix anglaise).
+- Mot de réveil retenu par l'utilisateur : **« Hey Mycroft »** (prononcé à l'anglaise).
 
-### Reprise de l'étape 9 (actions de l'utilisateur)
+### Reprise de l'étape 15b (actions de l'utilisateur)
 
-1. `make run`, puis 5 questions variées de 1 à 4 s, seul.
-2. Dans un autre terminal, sans arrêter le serveur : `make enroll NAME=Denis`.
-3. Nouvelles questions → le journal doit afficher `SPEAKER_00 = Denis (0.7x)`.
-4. Une autre voix (personne ou haut-parleur) → `Inconnu (…, proche de Denis)`.
-5. `make diarize-demo` → votre voix reconnue, Piper « Inconnu ».
-6. Analyser le journal collé, puis demander la validation de l'étape 9 avant l'étape 10
-   (association locuteur + texte : `{"speaker": "Denis", "text": "..."}`).
+1. Terminal 1 : `make agent-run` (crée `agent/agent.yaml` en **mode essai**, `dry_run: true` ; vérifier
+   `id: pc-bureau`, `mqtt.host: 192.168.1.200` et le compte MQTT `pc-bureau`).
+2. Terminal 2 : `make run` → `agent pc-bureau : en ligne, actions lock, reboot, shutdown`.
+3. « Hey Mycroft, verrouille le PC du bureau » → « Je verrouille le PC du bureau. » ; agent :
+   `essai : loginctl lock-sessions (non execute, dry_run)`.
+4. « Hey Mycroft, éteins le PC du bureau » → « Confirmez-vous… ? » → « Hey Mycroft, oui » → agent :
+   `essai : systemctl poweroff`.
+5. « Hey Mycroft, allume le PC du bureau » → « …est déjà en marche. »
+6. Ctrl-C sur l'agent → serveur : `agent pc-bureau : hors ligne` ; « éteins le PC du bureau » →
+   « …ne répond pas ».
+7. Analyser les journaux collés, puis demander la validation de l'étape 15b avant l'étape 16.
+
+### Points ouverts (ni oubliés, ni décidés)
+
+- `machines.actions.*.words` : **un mot par entrée** (comparaison mot à mot) ; « lance la sauvegarde »
+  ne peut pas être reconnu tel quel. Proposé à l'utilisateur (2026-09-30) : accepter des expressions
+  de plusieurs mots. Pas de réponse encore. La négation n'est pas gérée (« n'éteins pas » = éteindre ;
+  la confirmation limite le risque).
+- Test instable (rare, ~2 échecs sur 15 lancements de la suite, jamais seul) :
+  `test_diarization.py::test_embeddings_exist_for_a_short_question` (synthèse Piper aléatoire, existait
+  avant le 2026-10-06). Cause exacte non recherchée.
+- « le PC » seul n'est pas un nom de machine (`names` : « pc du bureau »…) : à ajouter si l'utilisateur
+  le veut, ambigu avec plusieurs machines.
+- Seuils du mot de réveil : réglage reporté (outil prêt : « mot presque reconnu »).
+- Seuil d'identification 0,45 à recalibrer avec de vraies personnes.
+- Whisper : hallucination sur 0,8 s de parole (« Je vous remercie de votre soutien… ») ; un « Ouvre »
+  perdu une fois en tête de commande.
+- Étape 16 : diarisation en parallèle de Whisper, `start_ms` ~214 ms (fenêtre TCP lwIP ?), numéros de
+  séquence (§3.4 du prompt) ; TLS (option de l'étape 15) si l'utilisateur le demande.
 
 ---
 
@@ -269,7 +302,8 @@ Reste à valider **avec le matériel** : câblage, niveau du micro, intelligibil
 
 ## 7. Git
 
-Dépôt initialisé le 2026-09-30 (branche `main`, aucun dépôt distant). Identité **locale au dépôt** :
+Dépôt initialisé le 2026-09-30 (branche `main`). Dépôt distant ajouté par l'utilisateur :
+`origin` = https://github.com/deunix-educ/voice-assistant.git (commits et push : par l'utilisateur, ou à sa demande). Identité **locale au dépôt** :
 Denis Defolie <denis.defolie@gmail.com>. Commits et push seulement à la demande de l'utilisateur.
 Vérifié avant le premier commit : `secrets.h`, `.env`, `mosquitto/passwd`, `agent/agent.yaml`,
 profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements virtuels sont ignorés.
@@ -766,3 +800,33 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   « ne répond pas ». 202 tests, pyright 0 erreur (agent/ inclus). En attente de l'essai réel.
 - **2026-09-30** — **Git initialisé** à la demande de l'utilisateur, avant l'essai de l'étape 15b :
   premier commit (108 fichiers) sur `main` ; contrôle des fichiers sensibles fait (§7).
+- **2026-10-06** — Reprise sur le PC de dev. Entre-temps, 3 commits de l'utilisateur (`WifiConfig` :
+  portail de configuration et NVS ; README agent ; agent installé sous `/etc/voice-assistant`) et un
+  dépôt distant GitHub. Symptôme : « `make run` ne donne plus de réponse ». Cause : `mqtt.host` passé à
+  192.168.1.200 (Pi 5, comptes exigés), mais **la carte n'est sur aucun broker** : absente de .200
+  (aucun `voice/esp32-01/state`), `offline` sur .104. Serveur sain (connecté, agent `pc-bureau` vu en
+  ligne, `dry_run`). À 15:50, serveur éjecté toutes les 2 s : un autre client `voice-server` sur .200
+  (second serveur, arrêté depuis). Décision : broker sur le Pi 5. Fait : `MQTT_HOST` du Makefile relu
+  dans `config.yaml`, modèles (`agent.yaml.example`, `secrets.h.example`, README) en .200, restes de
+  `/etc/voice-agent` alignés sur `/etc/voice-assistant` (dont le défaut `--config` de l'agent).
+  **Reste à faire par l'utilisateur** : compte `esp32-01` sur le Pi, puis portail de la carte
+  (broker 192.168.1.200, utilisateur `esp32-01`, mot de passe). Étape 15b toujours en attente d'essai.
+- **2026-10-06** — Carte reconnectée, chaîne complète rétablie sur le Pi 5. Réseau réel : point d'accès
+  **`RPI5-AP`** du Pi (NetworkManager, réseau **10.42.0.0/24**, Pi = **10.42.0.1** ; le Pi est aussi
+  192.168.1.200 en Ethernet, même broker). Carte : broker `10.42.0.1`, IP 10.42.0.73, signal −53 dBm.
+  Trois causes successives, lues dans le moniteur série (**921600 bauds**) : (1) session envoyée en
+  binaire sur le port série = MQTT non connecté (repli de l'étape 4) ; (2) `Reason: 211` : l'AP était
+  en **WPA1**, le core ESP32 3.x exige **WPA2** par défaut (`_minSecurity`) → AP passé en
+  `proto rsn`, CCMP, **canal 6** (était 13) ; (3) `Reason: 15 4WAY_HANDSHAKE_TIMEOUT` : mot de passe
+  Wi-Fi enregistré dans la carte faux, prouvé par `AP-STA-POSSIBLE-PSK-MISMATCH` dans le journal
+  `wpa_supplicant` du Pi → ressaisi dans le portail. Piège du portail `WifiConfig` : champs de mot de
+  passe toujours vides, un champ laissé vide efface la valeur enregistrée (correction proposée à
+  l'utilisateur, pas de réponse). Étape 15b toujours en attente d'essai et de validation.
+- **2026-10-06** — Premiers essais réels de l'étape 15b (agent `pc-bureau` en `dry_run`, broker du Pi) :
+  « verrouille le PC du bureau » exécuté deux fois (agent : `essai : loginctl lock-sessions`).
+  (1) Mots anglais non reconnus (« Locke », « Reboot », « Shut down » → « Que dois-je faire… ») :
+  ajoutés à `machines.actions.*.words` (lock/locke/locker/loque, reboot/reboote/rebooter,
+  shutdown/shut). (2) Confirmation refusée : « OUI » de Denis à 0,35 = « voix inconnue » → règle du
+  profil le plus proche (`confirm_min_score: 0.25`, `AccessPolicy.resolve(..., closest, score)`, le
+  pipeline transmet `Identification.closest`). 214 tests, pyright 0 erreur. Serveur à relancer
+  (config.yaml lu au démarrage). Étape 15b : essais en cours, pas encore validée.
