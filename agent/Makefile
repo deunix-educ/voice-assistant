@@ -4,7 +4,7 @@
 
 SHELL       := /bin/bash
 PREFIX      := /opt/voice-agent
-CONFIG_DIR  := /etc/voice-agent
+CONFIG_DIR  := /etc/voice-assistant
 # Mêmes versions que le serveur (server/pyproject.toml).
 DEPS        := paho-mqtt==2.1.0 PyYAML==6.0.2
 

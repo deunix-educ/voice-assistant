@@ -1,6 +1,6 @@
 # Agent de l'assistant vocal (étape 15b) : UNE machine Linux commandée par la voix.
 #
-# Installé par « make agent-install » dans /etc/voice-agent/agent.yaml (lisible par root
+# Installé par « make agent-install » dans /etc/voice-assistant/agent.yaml (lisible par root
 # seulement : il peut contenir un mot de passe MQTT). Après modification :
 #     sudo systemctl restart voice-agent
 #

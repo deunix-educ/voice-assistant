@@ -207,7 +207,7 @@ cd ~/voice-agent-install
 sudo make install
 
 # 3. Configure
-sudo nano /etc/voice-agent/agent.yaml
+sudo nano /etc/voice-assistant/agent.yaml
 #   id: pc-bureau                    ← name used in MQTT topics
 #   mqtt.host: 192.168.1.104         ← broker IP address
 #   dry_run: false                   ← true to test without executing anything
@@ -283,7 +283,7 @@ Current step: **15b — Linux machines on the network**. Steps 1 to 15 are valid
 
 "Hey Mycroft, éteins le PC du bureau": each machine runs an **agent**
 ([agent/voice_agent.py](agent/voice_agent.py)), a small MQTT client that only runs
-the actions in **its own** list (`/etc/voice-agent/agent.yaml`): fixed commands,
+the actions in **its own** list (`/etc/voice-assistant/agent.yaml`): fixed commands,
 no shell. The server only sends an action name. "Allume" wakes a machine that is
 off through **Wake-on-LAN** (a network packet received by the sleeping network card).
 
@@ -298,7 +298,7 @@ off through **Wake-on-LAN** (a network packet received by the sleeping network c
 2. `make run`, then "Hey Mycroft, éteins le PC du bureau" → confirmation → "oui":
    the agent prints `essai : systemctl poweroff (non execute)`.
 3. Real machine: copy `agent/` to it, `make -C agent install`, edit
-   `/etc/voice-agent/agent.yaml`, and name it in `server/config.yaml` (`machines.list`).
+   `/etc/voice-assistant/agent.yaml`, and name it in `server/config.yaml` (`machines.list`).
 
 **Anonymous broker**: any device on the network can then publish on `agent/<machine>/command`.
 In production, use the accounts and rights of step 15 (`mosquitto/acl` has the agent rules).

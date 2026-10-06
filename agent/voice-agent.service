@@ -5,7 +5,7 @@ After=network-online.target
 Wants=network-online.target
 
 [Service]
-ExecStart=/opt/voice-agent/.venv/bin/python /opt/voice-agent/voice_agent.py --config /etc/voice-agent/agent.yaml
+ExecStart=/opt/voice-agent/.venv/bin/python /opt/voice-agent/voice_agent.py --config /etc/voice-assistant/agent.yaml
 # Relancé s'il s'arrête (broker absent au démarrage, plantage...) : l'agent doit toujours répondre.
 Restart=always
 RestartSec=5
