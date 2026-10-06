@@ -207,10 +207,17 @@ scp -r /home/rpi5/voice-assistant/agent/ user@pc-bureau:~/voice-agent/
 cd ~/voice-agent
 sudo make install
 
-# 3. Configurer
+# 3. Créer le compte MQTT sur le serveur (si le broker est sécurisé, étape 15)
+#    (à exécuter sur le Raspberry Pi, pas sur la machine cible)
+make mqtt-user NAME=pc-bureau      # noter le mot de passe
+make mosquitto-docker              # ou mosquitto-config — recharge le broker
+
+# 4. Configurer l'agent sur la machine cible
 sudo nano /etc/voice-assistant/agent.yaml
 #   id: pc-bureau                    ← nom dans les topics MQTT
 #   mqtt.host: 192.168.1.104         ← adresse IP du broker
+#   mqtt.username: pc-bureau         ← même valeur que id (vide si broker anonyme)
+#   mqtt.password: <mot-de-passe>    ← généré à l'étape 3 (vide si broker anonyme)
 #   dry_run: false                   ← true pour tester sans rien exécuter
 
 # 4. Activer et démarrer
