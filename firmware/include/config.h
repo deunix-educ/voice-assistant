@@ -176,6 +176,19 @@ static constexpr uint32_t CAPTURE_TASK_STACK_BYTES = 4096;
 /// Débit série : 921 600 baud = ~92 kB/s, largement au-dessus des 32 kB/s d'audio.
 static constexpr uint32_t SERIAL_BAUD = 921600;
 
+// -------------------------------------------------------- Configuration Wi-Fi (portail AP)
+
+/**
+ * SSID du point d'accès ouvert en mode configuration (premier démarrage ou
+ * bouton PTT tenu pendant WIFI_CONFIG_HOLD_MS au démarrage). La carte sert
+ * un formulaire HTTP sur http://192.168.4.1 tant que l'utilisateur n'a pas
+ * validé les identifiants Wi-Fi + MQTT.
+ */
+static constexpr const char* WIFI_CONFIG_AP_SSID = "VoiceAssist-Config";
+
+/// Durée de maintien du bouton PTT au démarrage pour forcer le portail (ms).
+static constexpr uint32_t WIFI_CONFIG_HOLD_MS = 3000;
+
 // ------------------------------------------------------------ Wi-Fi et MQTT (étape 3)
 
 /// Identifiant du nœud, utilisé dans les topics MQTT : voice/<DEVICE_ID>/...

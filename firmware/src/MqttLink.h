@@ -83,6 +83,10 @@ public:
     /// Nombre de connexions réussies depuis le démarrage.
     uint32_t connections() const;
 
+    /// Met à jour le port avant le premier appel à begin() (utile si la
+    /// configuration vient de la NVS plutôt que d'une constante de secrets.h).
+    void setPort(uint16_t port) { _port = port; }
+
 private:
     PubSubClient _client;
     const char* _host;

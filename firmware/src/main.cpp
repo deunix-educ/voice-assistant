@@ -34,15 +34,21 @@
 #include "SerialFramer.h"
 #include "StatusLed.h"
 #include "VoiceSession.h"
+#include "WifiConfig.h"
 #include "WifiLink.h"
 #include "config.h"
 
-// Les secrets (Wi-Fi, broker) ne sont jamais versionnés : on les exige ici, avec
-// un message clair, plutôt qu'une erreur de compilation obscure plus loin.
+// secrets.h est optionnel : s'il est présent ses valeurs servent de repli si
+// la NVS est vide. Sans lui, le portail AP/HTTP est lancé au premier démarrage.
 #if __has_include("secrets.h")
 #include "secrets.h"
 #else
-#error "firmware/include/secrets.h absent : cp firmware/include/secrets.h.example firmware/include/secrets.h, puis renseignez le Wi-Fi et l'adresse du broker"
+static constexpr const char* WIFI_SSID     = "";
+static constexpr const char* WIFI_PASSWORD = "";
+static constexpr const char* MQTT_HOST     = "";
+static constexpr uint16_t    MQTT_PORT     = 1883;
+static constexpr const char* MQTT_USER     = "";
+static constexpr const char* MQTT_PASSWORD = "";
 #endif
 
 namespace {
@@ -63,8 +69,11 @@ DemoDevices devices(PIN_DEMO_LIGHT);
 SerialFramer framer(Serial);
 SerialFrameReader reader(Serial);
 WiFiClient network;
-WifiLink wifi(WIFI_SSID, WIFI_PASSWORD, DEVICE_ID);
-MqttLink mqtt(network, MQTT_HOST, MQTT_PORT, DEVICE_ID, MQTT_USER, MQTT_PASSWORD);
+// cfg DOIT être déclaré avant wifi et mqtt : leurs constructeurs stockent des
+// pointeurs vers ses tampons internes, remplis plus tard par cfg.begin().
+WifiConfig cfg;
+WifiLink wifi(cfg.ssid(), cfg.password(), DEVICE_ID);
+MqttLink mqtt(network, cfg.mqttHost(), cfg.mqttPort(), DEVICE_ID, cfg.mqttUser(), cfg.mqttPassword());
 
 /// Chunk en cours d'envoi réseau : 1600 octets, alloué une seule fois.
 uint8_t outgoingChunk[AUDIO_CHUNK_BYTES];
@@ -462,6 +471,29 @@ void setup() {
     devices.begin();
     button.begin();
 
+    // Détection du mode configuration : bouton PTT tenu dès le démarrage.
+    // On attend WIFI_CONFIG_HOLD_MS ms ; si relâché avant, démarrage normal.
+    bool forceConfig = false;
+    if (digitalRead(PIN_BUTTON_PTT) == LOW) {
+        Serial.println("# bouton PTT detecte au demarrage, attente pour confirmer...");
+        const uint32_t holdStart = millis();
+        while (digitalRead(PIN_BUTTON_PTT) == LOW) {
+            if (millis() - holdStart >= WIFI_CONFIG_HOLD_MS) {
+                forceConfig = true;
+                break;
+            }
+            delay(10);
+        }
+    }
+
+    // Charge les identifiants Wi-Fi + MQTT depuis la NVS ou secrets.h ;
+    // lance le portail AP/HTTP si aucun n'est disponible ou si forcé.
+    // Ne retourne pas en cas de portail (reboot après sauvegarde).
+    cfg.begin(forceConfig,
+              WIFI_SSID, WIFI_PASSWORD,
+              MQTT_HOST, MQTT_PORT,
+              MQTT_USER, MQTT_PASSWORD);
+
     Serial.println("\n# --- assistant vocal, etapes 1 a 3 : audio + Wi-Fi + MQTT ---");
     Serial.printf("# format : %lu Hz, 16 bits, mono, chunk %lu ms = %u octets\n",
                   static_cast<unsigned long>(AUDIO_SAMPLE_RATE),
@@ -511,9 +543,10 @@ void setup() {
     // --- Réseau, en dernier : l'auto-test du micro se fait sans les émissions
     // radio du Wi-Fi (pointes de 300 mA), qui pourraient fausser la mesure.
     Serial.printf("# reseau : Wi-Fi \"%s\", broker %s:%u, topics %s/%s/..., compte MQTT %s\n",
-                  WIFI_SSID, MQTT_HOST, MQTT_PORT, MQTT_TOPIC_PREFIX, DEVICE_ID,
-                  MQTT_PASSWORD[0] != '\0' ? "oui" : "NON (anonyme)");
+                  cfg.ssid(), cfg.mqttHost(), cfg.mqttPort(), MQTT_TOPIC_PREFIX, DEVICE_ID,
+                  cfg.mqttPassword()[0] != '\0' ? "oui" : "NON (anonyme)");
     network.setConnectionTimeout(MQTT_CONNECT_TIMEOUT_MS);
+    mqtt.setPort(cfg.mqttPort());  // synchronise _port avec la valeur chargée par cfg
     if (!mqtt.begin(onMqttMessage, onMqttConnect)) {
         Serial.println("# ERREUR : tampon MQTT impossible a allouer");
     }

@@ -102,32 +102,144 @@ Pas de Base64 : les payloads MQTT contiennent des octets PCM bruts.
 
 ## 4. Installation
 
+### 4.1 Firmware ESP32
+
+**Prérequis :** câble USB avec les données (pas charge seule), port identifié
+(`ls /dev/ttyUSB*` ou `/dev/ttyACM*` après branchement).
+
 ```bash
-# 1. Paquets système (mosquitto, ffmpeg, venv) + accès au port série
+make pio-venv          # PlatformIO dans son propre venv — une seule fois
+make fw-build          # compile sans flasher
+make fw-upload SERIAL_PORT=/dev/ttyUSB0
+```
+
+**Premier démarrage — portail de configuration WiFi**
+
+Si aucun identifiant n'a encore été configuré, la carte ouvre automatiquement
+un point d'accès :
+
+1. La LED clignote rapidement (100 ms on / 100 ms off).
+2. Connectez un téléphone ou un PC au réseau **VoiceAssist-Config**.
+3. Ouvrez `http://192.168.4.1` dans un navigateur.
+4. Renseignez le Wi-Fi **(réseau 2,4 GHz obligatoire)** et l'adresse IP du
+   broker MQTT.
+5. Cliquez **Enregistrer et redémarrer** — les identifiants sont sauvegardés
+   dans la mémoire permanente (NVS) et la carte redémarre.
+
+> **Reconfiguration :** tenez le bouton PTT appuyé 3 s à la mise sous tension
+> pour rouvrir le portail, même si des identifiants sont déjà enregistrés.
+
+**Alternative — `secrets.h`** (pour les compilations répétées en développement)
+
+```bash
+cp firmware/include/secrets.h.example firmware/include/secrets.h
+# Éditer : WIFI_SSID, WIFI_PASSWORD, MQTT_HOST
+make fw-upload SERIAL_PORT=/dev/ttyUSB0
+```
+
+La NVS reste prioritaire sur `secrets.h`. Pour repartir de zéro, forcez le
+portail avec le bouton PTT (ou effacez la NVS avec `esptool.py erase_flash`).
+
+---
+
+### 4.2 Serveur Python
+
+**Prérequis :** Python 3.10+, Docker (pour le broker) ou Mosquitto natif.
+
+```bash
+# 1. Paquets système (mosquitto, ffmpeg, venv) + groupe dialout (port série)
 make install-system
-# Se déconnecter/reconnecter pour activer le groupe « dialout ».
+# → se déconnecter/reconnecter pour activer le groupe « dialout »
 
-# 2. Environnement Python et outils de développement (pyright, pytest, platformio)
+# 2. Broker MQTT (choisir l'une ou l'autre)
+make mosquitto-docker          # conteneur Docker (recommandé)
+make mosquitto-config          # service Mosquitto Debian natif (déjà installé via make install-system)
+
+# 3. Environnement Python + outils de développement (pytest, pyright, PlatformIO)
 make install-dev
-# PlatformIO est installé dans son propre venv (.pio-venv) : ses dépendances
-# entrent en conflit avec celles du serveur vocal.
+# PlatformIO est dans son propre venv (.pio-venv) : ses dépendances entrent
+# en conflit avec celles du serveur vocal.
 
-# 3. Transcription et synthèse vocale (étape 6) : faster-whisper, Piper, ~550 Mo de modèles
+# 4. Transcription + synthèse vocale (~550 Mo)
 make install-speech
 make models
 
-# 4. Diarisation (étape 8) : pyannote + torch CPU (~1,3 Go), jeton Hugging Face requis
+# 5. Diarisation + identification vocale (~1,3 Go) — optionnel, lourd sur RPi 4
+#    Prérequis : compte Hugging Face + accepter les conditions sur
+#    https://huggingface.co/pyannote/speaker-diarization-community-1
+#    Créer un jeton « Read » sur https://huggingface.co/settings/tokens
+cp server/.env.example server/.env    # puis HF_TOKEN=hf_…
 make install-diarization
-cp server/.env.example server/.env    # puis HF_TOKEN=... (voir étape 8)
 make models
 
-# 5. Secrets (utilisés à partir de l'étape 3)
-cp firmware/include/secrets.h.example firmware/include/secrets.h
-cp server/.env.example server/.env
+# 6. Mot de réveil openWakeWord (~5 Mo) — optionnel
+make install-wakeword
+make models
 
-# 6. Aide
-make help
+# 7. Lancer l'assistant
+make run
 ```
+
+**Fichiers à configurer :**
+
+| Fichier | Contenu |
+|---|---|
+| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD`, `HF_TOKEN` |
+| `server/config.yaml` | pièces, voix, droits d'accès, liste des machines |
+
+Pour l'aide sur toutes les cibles : `make help`.
+
+---
+
+### 4.3 Agent Linux (machines commandées par la voix)
+
+Chaque machine Linux à commander (PC du bureau, NAS…) fait tourner un service
+léger qui n'exécute **que** les actions listées dans son fichier de
+configuration — aucun shell exposé.
+
+**Sur la machine cible :**
+
+```bash
+# 1. Copier le répertoire agent/ (depuis le Raspberry Pi)
+scp -r /home/rpi5/voice-assistant/agent/ user@pc-bureau:~/voice-agent/
+
+# 2. Installer le service (crée /opt/voice-agent/, /etc/voice-agent/, unité systemd)
+cd ~/voice-agent
+sudo make install
+
+# 3. Configurer
+sudo nano /etc/voice-agent/agent.yaml
+#   id: pc-bureau                    ← nom dans les topics MQTT
+#   mqtt.host: 192.168.1.104         ← adresse IP du broker
+#   dry_run: false                   ← true pour tester sans rien exécuter
+
+# 4. Activer et démarrer
+sudo systemctl enable --now voice-agent
+sudo systemctl status voice-agent
+```
+
+**Sur le serveur,** ajouter la machine dans `server/config.yaml` :
+
+```yaml
+machines:
+  list:
+    - id: pc-bureau
+      name: "PC du bureau"        # dit à voix haute : « le PC du bureau »
+      mac: "AA:BB:CC:DD:EE:FF"    # adresse MAC pour Wake-on-LAN
+      ip: 192.168.1.50
+```
+
+**Essai sans rien éteindre** (`dry_run: true` dans `agent.yaml`) :
+
+```bash
+make run        # serveur (terminal 1)
+make agent-run  # agent en mode essai sur cette machine (terminal 2)
+# Dire : « Hey Mycroft, éteins le PC du bureau »
+# → l'agent affiche : essai : systemctl poweroff (non exécuté)
+```
+
+Actions disponibles par défaut : `shutdown`, `reboot`, `lock` ; `wake`
+(allumer depuis le réseau) est géré par le serveur via Wake-on-LAN.
 
 ---
 

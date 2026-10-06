@@ -103,32 +103,142 @@ No Base64: MQTT payloads carry raw PCM bytes.
 
 ## 4. Installation
 
-```bash
-# 1. System packages (mosquitto, ffmpeg, venv) + serial port access
-make install-system
-# Log out and back in to activate the "dialout" group.
+### 4.1 ESP32 firmware
 
-# 2. Python environment and dev tooling (pyright, pytest, platformio)
+**Prerequisites:** a USB cable with data lines (not charge-only), port identified
+(`ls /dev/ttyUSB*` or `/dev/ttyACM*` after plugging in).
+
+```bash
+make pio-venv          # PlatformIO in its own venv — once only
+make fw-build          # compile without flashing
+make fw-upload SERIAL_PORT=/dev/ttyUSB0
+```
+
+**First boot — WiFi configuration portal**
+
+If no credentials have been configured yet, the board automatically opens an
+access point:
+
+1. The LED blinks rapidly (100 ms on / 100 ms off).
+2. Connect a phone or PC to the **VoiceAssist-Config** Wi-Fi network.
+3. Open `http://192.168.4.1` in a browser.
+4. Enter the Wi-Fi network **(2.4 GHz required)** and the MQTT broker IP address.
+5. Click **Save and restart** — credentials are saved to persistent memory (NVS)
+   and the board reboots.
+
+> **Reconfiguration:** hold the PTT button for 3 s at power-on to reopen the
+> portal, even if credentials are already stored.
+
+**Alternative — `secrets.h`** (for repeated development builds)
+
+```bash
+cp firmware/include/secrets.h.example firmware/include/secrets.h
+# Edit: WIFI_SSID, WIFI_PASSWORD, MQTT_HOST
+make fw-upload SERIAL_PORT=/dev/ttyUSB0
+```
+
+NVS takes priority over `secrets.h`. To start from scratch, force the portal
+with the PTT button (or erase the NVS with `esptool.py erase_flash`).
+
+---
+
+### 4.2 Python server
+
+**Prerequisites:** Python 3.10+, Docker (for the broker) or native Mosquitto.
+
+```bash
+# 1. System packages (mosquitto, ffmpeg, venv) + serial port access (dialout group)
+make install-system
+# → log out and back in to activate the "dialout" group
+
+# 2. MQTT broker (choose one)
+make mosquitto-docker          # Docker container (recommended)
+make mosquitto-config          # native Debian Mosquitto service (installed via make install-system)
+
+# 3. Python environment + dev tooling (pytest, pyright, PlatformIO)
 make install-dev
 # PlatformIO gets its own venv (.pio-venv): its dependencies clash with the
 # voice server's.
 
-# 3. Speech recognition and synthesis (step 6): faster-whisper, Piper, ~550 MB of models
+# 4. Speech recognition + synthesis (~550 MB)
 make install-speech
 make models
 
-# 4. Diarization (step 8): pyannote + CPU torch (~1.3 GB), Hugging Face token required
+# 5. Diarization + speaker identification (~1.3 GB) — optional, heavy on RPi 4
+#    Prerequisite: Hugging Face "Read" token in server/.env (HF_TOKEN=hf_…)
+#    Accept the conditions at https://huggingface.co/pyannote/speaker-diarization-community-1
+cp server/.env.example server/.env    # then HF_TOKEN=hf_…
 make install-diarization
-cp server/.env.example server/.env    # then HF_TOKEN=... (see step 8)
 make models
 
-# 5. Secrets (used from step 3 onwards)
-cp firmware/include/secrets.h.example firmware/include/secrets.h
-cp server/.env.example server/.env
+# 6. Wake word openWakeWord (~5 MB) — optional
+make install-wakeword
+make models
 
-# 6. Help
-make help
+# 7. Run the assistant
+make run
 ```
+
+**Files to configure:**
+
+| File | Contents |
+|---|---|
+| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD`, `HF_TOKEN` |
+| `server/config.yaml` | rooms, voices, access rights, machine list |
+
+For help on all targets: `make help`.
+
+---
+
+### 4.3 Linux agent (machines controlled by voice)
+
+Each Linux machine to control (desktop PC, NAS…) runs a lightweight service that
+executes **only** the actions listed in its own configuration file — no shell
+exposed.
+
+**On the target machine:**
+
+```bash
+# 1. Copy the agent/ directory from the Raspberry Pi
+scp -r /home/rpi5/voice-assistant/agent/ user@desktop-pc:~/voice-agent-install/
+
+# 2. Install the service (creates /opt/voice-agent/, /etc/voice-agent/, systemd unit)
+cd ~/voice-agent-install
+sudo make install
+
+# 3. Configure
+sudo nano /etc/voice-agent/agent.yaml
+#   id: pc-bureau                    ← name used in MQTT topics
+#   mqtt.host: 192.168.1.104         ← broker IP address
+#   dry_run: false                   ← true to test without executing anything
+
+# 4. Enable and start
+sudo systemctl enable --now voice-agent
+sudo systemctl status voice-agent
+```
+
+**On the server,** add the machine to `server/config.yaml`:
+
+```yaml
+machines:
+  list:
+    - id: pc-bureau
+      name: "PC du bureau"        # spoken as: "le PC du bureau"
+      mac: "AA:BB:CC:DD:EE:FF"    # MAC address for Wake-on-LAN
+      ip: 192.168.1.50
+```
+
+**Try it without shutting anything down** (`dry_run: true` in `agent.yaml`):
+
+```bash
+make run        # server (terminal 1)
+make agent-run  # agent in test mode on this machine (terminal 2)
+# Say: "Hey Mycroft, éteins le PC du bureau"
+# → the agent prints: essai : systemctl poweroff (non exécuté)
+```
+
+Default available actions: `shutdown`, `reboot`, `lock`; `wake`
+(power on over the network) is handled by the server via Wake-on-LAN.
 
 ---
 
