@@ -2,9 +2,8 @@
 
 #include <ArduinoJson.h>
 
-CommandHandler::CommandHandler(PlaybackStream& playback, MqttLink& mqtt, DemoDevices& devices,
-                               ModeCallback onListen, ModeCallback onCapture)
-    : _playback(playback), _mqtt(mqtt), _devices(devices), _onListen(onListen), _onCapture(onCapture) {}
+CommandHandler::CommandHandler(PlaybackStream& playback, MqttLink& mqtt, DemoDevices& devices)
+    : _playback(playback), _mqtt(mqtt), _devices(devices) {}
 
 void CommandHandler::handle(const uint8_t* payload, size_t length) {
     JsonDocument doc;  // messages de contrôle : quelques dizaines d'octets
@@ -40,16 +39,6 @@ void CommandHandler::handle(const uint8_t* payload, size_t length) {
                  static_cast<unsigned long>(millis()));
         _mqtt.publish("event", reply, false);
         Serial.println("# control : ping -> pong");
-        return;
-    }
-
-    if (strcmp(command, "listen") == 0) {
-        _onListen(doc["enabled"] | false);
-        return;
-    }
-
-    if (strcmp(command, "capture") == 0) {
-        _onCapture(doc["active"] | false);
         return;
     }
 

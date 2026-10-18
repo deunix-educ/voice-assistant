@@ -8,12 +8,12 @@
 Étape 9 : chaque locuteur est comparé aux profils vocaux : un nom, ou « Inconnu ».
 Étape 10 : qui a dit quoi, publié sur voice/<carte>/transcript ; l'assistant appelle par son nom.
 Étape 11 : domotique : « ferme les volets du salon » → home/salon/shutter/set (+ la carte si c'est sa pièce).
-Étape 13 : mains libres : « Alexa, allume la lumière », sans le bouton.
 Étape 14 : droits par profil (complet / standard / limite), confirmation des actions sensibles.
 Étape 15 : présence + testament (les cartes coupent leur micro si le serveur meurt), journal fichier.
 Étape 16 : latence : empreinte directe pour une parole courte, cache de synthèse, envois sans attente.
 Étape 15b : machines Linux : « éteins le PC du bureau » → agent/pc-bureau/command ; « allume » → Wake-on-LAN.
 Branche fingerprint, F3 : un doigt reconnu par le capteur R503 ouvre la session (la carte l'annonce dans START).
+Branche fingerprint, F4 : les droits suivent le doigt ; plus de VAD, de diarisation, de voix ni de mot de réveil.
 """
 
 from __future__ import annotations
@@ -26,10 +26,8 @@ import queue
 import signal
 import sys
 import threading
-import time
 from collections.abc import Callable
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from voice_server.audio_resampler import AudioResampler
 from voice_server.audio_sender import AudioSender
@@ -37,9 +35,6 @@ from voice_server.fingerprint_book import FingerprintBook
 from voice_server.mqtt_link import MqttLink
 from voice_server.session_manager import Outcome, SessionManager, SessionResult
 from voice_server.settings import Settings, load_settings
-
-if TYPE_CHECKING:
-    from voice_server.hands_free import HandsFreeListener
 
 logger = logging.getLogger("voice_server")
 
@@ -133,21 +128,6 @@ def make_assistant(settings: Settings, resampler: AudioResampler, sender: AudioS
     return pipeline.handle
 
 
-def make_listener(settings: Settings, link: MqttLink,
-                  on_command: Callable[[SessionResult], None]) -> "HandsFreeListener":
-    """Écoute mains libres (étape 13) : un détecteur de mot de réveil par carte."""
-    from voice_server.hands_free import HandsFreeListener
-    from voice_server.voice_activity import VoiceActivityDetector
-    from voice_server.wake_word import WakeWordDetector
-
-    WakeWordDetector(settings.wake)  # vérifie modèles et installation dès le démarrage
-    return HandsFreeListener(
-        settings.wake, settings.audio, VoiceActivityDetector(settings.vad, settings.audio.sample_rate),
-        settings.recordings_dir, link, on_command,
-        detector_factory=lambda device: WakeWordDetector(settings.wake, device),
-    )
-
-
 def worker(jobs: "queue.Queue[SessionResult | None]", handle: Callable[[SessionResult], object]) -> None:
     """Traite les sessions une à une, hors du fil réseau : chacune dure des secondes."""
     while True:
@@ -190,7 +170,7 @@ def main(argv: list[str]) -> int:
             logger.error("%s", error)
             return 1
         except FileNotFoundError as error:
-            logger.error("%s (ou diarization.enabled: false dans config.yaml)", error)
+            logger.error("%s : lancez 'make models'", error)
             return 1
         logger.info("mode assistant : posez un doigt enregistre (ou appuyez sur le bouton) et parlez")
 
@@ -203,32 +183,11 @@ def main(argv: list[str]) -> int:
     sessions = SessionManager(settings.audio, settings.sessions, settings.recordings_dir,
                               on_finished=on_finished,
                               describe_finger=FingerprintBook(settings.fingerprint).describe)
-    listener = None
-    if settings.wake.enabled and not args.echo:
-        try:
-            listener = make_listener(settings, link, on_finished)
-        except (ImportError, FileNotFoundError) as error:
-            logger.error("%s : lancez 'make install-wakeword' et 'make models', "
-                         "ou wake.enabled: false dans config.yaml", error)
-            return 1
-        logger.info("mains libres : dites %s", ", ".join(f"« {w} »" for w in settings.wake.words))
     threading.Thread(target=worker, args=(jobs, handle), daemon=True).start()
 
-    def on_state(device: str, payload: bytes) -> None:
-        log_state(device, payload)
-        if listener is not None:
-            listener.on_state(device, payload)
-
-    def on_event(device: str, payload: bytes) -> None:
-        sessions.on_event(device, payload)
-        if listener is not None:
-            listener.on_event(device, payload)
-
-    link.on("state", on_state)
-    link.on("event", on_event)
+    link.on("state", log_state)
+    link.on("event", sessions.on_event)
     link.on("audio/in", sessions.on_audio)
-    if listener is not None:
-        link.on("audio/stream", listener.on_stream)
 
     stop = threading.Event()
     signal.signal(signal.SIGTERM, lambda *_: stop.set())
@@ -237,15 +196,10 @@ def main(argv: list[str]) -> int:
     try:
         while not stop.wait(SWEEP_PERIOD_S):
             sessions.sweep()
-            if listener is not None:
-                listener.sweep()
     except KeyboardInterrupt:
         pass
     finally:
         jobs.put(None)
-        if listener is not None:
-            listener.stop()  # les cartes cessent d'envoyer leur micro
-            time.sleep(0.5)  # laisse partir ces messages avant la déconnexion
         link.stop()
         logger.info("arret du serveur")
     return 0

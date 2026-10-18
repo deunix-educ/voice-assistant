@@ -18,10 +18,6 @@
  *       {"cmd":"device","device":"light","action":"on"}  (étape 11)
  *           -> applique la commande aux appareils de la pièce, puis confirme :
  *              {"event":"device","device":"light","action":"on","ok":true,"state":"on"}
- *       {"cmd":"listen","enabled":true}   (étape 13) écoute continue : le micro part
- *           vers le serveur sur voice/<id>/audio/stream, qui guette le mot de réveil
- *       {"cmd":"capture","active":true}   (étape 13) le serveur a entendu le mot de
- *           réveil et écoute la commande : LED allumée
  *
  *       {"cmd":"fp_enroll","id":3}        (branche fingerprint, F2) enregistre un doigt
  *       {"cmd":"fp_delete","id":3} ou {"cmd":"fp_delete","all":true}   supprime une empreinte ou toutes
@@ -32,14 +28,10 @@
  */
 class CommandHandler {
 public:
-    /// Rappel pour un mode activé ou désactivé par le serveur.
-    using ModeCallback = void (*)(bool enabled);
-
     /// Rappel des commandes d'empreinte : nom de la commande, id (-1 si absent), « all » vrai ou faux.
     using FingerprintCallback = void (*)(const char* command, int id, bool all);
 
-    CommandHandler(PlaybackStream& playback, MqttLink& mqtt, DemoDevices& devices,
-                   ModeCallback onListen, ModeCallback onCapture);
+    CommandHandler(PlaybackStream& playback, MqttLink& mqtt, DemoDevices& devices);
 
     /// Branche les commandes d'empreinte (branche fingerprint) ; sans cela, elles sont ignorées.
     void setFingerprintCallback(FingerprintCallback callback) { _onFingerprint = callback; }
@@ -51,8 +43,6 @@ private:
     PlaybackStream& _playback;
     MqttLink& _mqtt;
     DemoDevices& _devices;
-    ModeCallback _onListen;
-    ModeCallback _onCapture;
     FingerprintCallback _onFingerprint = nullptr;
 
     /// Commande domotique : exécution puis confirmation sur voice/<id>/event.

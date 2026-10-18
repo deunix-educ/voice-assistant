@@ -1,6 +1,7 @@
 # Configuration du serveur vocal.
 # Les valeurs sensibles (mots de passe, jetons) vont dans .env, jamais ici.
 # Les sections marquées « étape N » ne sont lues qu'à partir de cette étape.
+# Branche fingerprint : pas de VAD, de diarisation, de voix ni de mot de réveil (étapes F3 à F4b).
 
 audio:
     sample_rate: 16000          # Hz, identique dans tout le système
@@ -56,36 +57,6 @@ tts:
     voice: fr_FR-siwis-medium
     length_scale: 1.0           # > 1 : débit plus lent
 
-# F4 : les sections vad, diarization et speaker ne servent plus (ni la VAD, ni la diarisation, ni
-# l'identification vocale ne tournent). Elles disparaissent à l'étape F4b.
-# étape 7 : détection d'activité vocale (Silero, fenêtres de 512 échantillons = 32 ms,
-# imposées à 16 kHz). Une session sans parole n'est pas transcrite.
-vad:
-    threshold: 0.5              # probabilité de parole ; on en sort sous 0,35 (hystérésis)
-    min_silence_ms: 500         # pause plus courte : la phrase continue
-    min_speech_ms: 250          # parole plus courte : bruit (clic du bouton), ignorée
-    speech_pad_ms: 150          # marge autour de chaque segment : attaques et fins de mots
-
-# étape 8 : diarisation (qui parle quand), sur la seule parole trouvée par la VAD.
-# Modèle soumis à conditions : les accepter sur huggingface.co, HF_TOKEN dans .env,
-# puis « make models ». Ensuite, tout fonctionne hors ligne ; télémétrie pyannote coupée.
-diarization:
-    enabled: true               # false sur Raspberry Pi 4 (trop lourd) ou sans l'extra « diarization »
-    model: pyannote/speaker-diarization-community-1
-    max_speakers: 3             # borne haute : un assistant de salon, pas une réunion
-    # étape 16 : en dessous de cette durée de PAROLE, on suppose une seule personne (une
-    # commande) : son empreinte vocale est calculée directement, sans chercher qui parle quand.
-    # Mesuré sur 113 sessions réelles : 0,02 s au lieu de 0,42 s, même identification
-    # (écart de score médian 0,001). Au-delà, diarisation complète. 0 : toujours la diarisation.
-    direct_below_s: 4.0
-
-# étape 9 : identification du locuteur (probabiliste, jamais une sécurité).
-# Profils créés par « make enroll NAME=... », un fichier par personne (donnée biométrique).
-# Nécessite la diarisation : les empreintes viennent de son modèle (WeSpeaker ResNet34).
-speaker:
-    profiles_dir: profiles
-    similarity_threshold: 0.45  # mesuré : vous 0,52 à 0,83 contre votre profil, Piper -0,08 à 0,11
-
 # étape 11 : domotique. Commandes publiées sur <topic_prefix>/<pièce>/<appareil>/set ;
 # la carte exécute en plus celles de sa propre pièce (LED de démonstration).
 home:
@@ -100,23 +71,6 @@ home:
         entrée: de l'entrée
     boards:                     # pièce de chaque carte : « allume la lumière » sans pièce = ici
         esp32-01: salon
-
-# étape 13 : mot de réveil, mains libres. Le serveur demande à chaque carte de lui envoyer
-# son micro en continu (voice/<carte>/audio/stream) et guette le mot. Rien n'est écrit
-# sur disque avant le mot : seules les dernières preroll_ms restent en mémoire.
-# Prononciation à l'anglaise : « Alexa », « Hé Maïcrofte », « Hey Djâr-viss ».
-wake:
-    enabled: false              # branche fingerprint (F3) : le doigt remplace le mot de réveil
-    words: [alexa, hey_jarvis, hey_mycroft]   # models/openwakeword/<mot>_v0.1.onnx
-    threshold: 0.5              # mesuré : 90 enregistrements sans le mot, score max 0,07
-    # Seuil propre à un mot, si le journal montre des « mot presque reconnu » répétés.
-    # Plus bas = plus sensible, mais plus de déclenchements intempestifs. Ex. : {hey_jarvis: 0.35}
-    thresholds: {}
-    preroll_ms: 500             # la commande suit souvent le mot sans pause
-    end_silence_ms: 800         # silence qui clôt la commande
-    no_speech_timeout_s: 4      # mot entendu mais rien dit ensuite : on abandonne
-    max_command_s: 10
-    cooldown_s: 20              # écoute suspendue pendant la réponse (jusqu'au bilan « played »)
 
 # étape 14 : droits par personne. Depuis F4, la personne est celle dont le DOIGT a ouvert la session
 # (section fingerprint, plus bas) ; la voix n'identifie plus personne. Niveaux : complet > standard > limite.

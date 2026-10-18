@@ -21,8 +21,6 @@ JITTER      ?= 0
 VOICE       ?= fr_FR-tom-medium
 SPEAKER     ?=
 SAY_OUT     ?= recordings/voix-test/phrase.wav
-WAKE        ?=
-WAKE_VOICE  ?= en_GB-alan-medium
 # Adresse du broker : UN seul réglage, mqtt.host de server/config.yaml, relu ici pour les
 # cibles mqtt-* (surcharge ponctuelle : make mqtt-watch MQTT_HOST=...).
 MQTT_HOST   ?= $(shell awk '/^mqtt:/{m=1;next} m && $$1=="host:"{print $$2; exit}' server/config.yaml)
@@ -41,8 +39,8 @@ MQTT_AUTH    = $(if $(MQTT_USERNAME),-u '$(MQTT_USERNAME)' -P '$(MQTT_PASSWORD)'
 MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de server/.env,anonyme))"
 
 .DEFAULT_GOAL := help
-.PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech install-diarization install-wakeword models \
-        say latency finger-list finger-enroll finger-delete speech-check transcribe vad vad-all diarize diarize-demo enroll profiles forget run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
+.PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech models \
+        say latency finger-list finger-enroll finger-delete speech-check transcribe run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
         fw-monitor clean
 
 ## ------------------------------------------------------------------ aide
@@ -140,7 +138,7 @@ venv:  ## Crée l'environnement virtuel Python
 
 install: venv  ## Installe le serveur Python (dépendances de base)
 	$(PIP) install -e server
-	@test -f server/.env || { cp server/.env.example server/.env; echo "server/.env créé depuis .env.example — renseigner MQTT_USERNAME/PASSWORD et HF_TOKEN si besoin."; }
+	@test -f server/.env || { cp server/.env.example server/.env; echo "server/.env créé depuis .env.example — renseigner MQTT_USERNAME/PASSWORD."; }
 
 install-dev: install pio-venv  ## Installe en plus les outils de développement (pyright, pytest, platformio)
 	$(PIP) install -e "server[dev]"
@@ -148,21 +146,11 @@ install-dev: install pio-venv  ## Installe en plus les outils de développement 
 install-speech: install  ## Installe faster-whisper et Piper (étape 6)
 	$(PIP) install -e "server[speech]"
 
-install-diarization: install-speech  ## Installe pyannote et torch, version CPU (étape 8, ~1,3 Go)
-	$(PIP) install --index-url https://download.pytorch.org/whl/cpu \
-		--extra-index-url https://pypi.org/simple -e "server[diarization]"
-
-install-wakeword: install-speech  ## Installe openWakeWord, en mode ONNX (étape 13)
-	$(PIP) install -e "server[wakeword]"
-	# Sans dépendances : openwakeword exige tflite-runtime, absent pour Python 3.13 (inutile en ONNX).
-	$(PIP) install --no-deps "openwakeword==0.6.0"
-
-models:  ## Télécharge les modèles de config.yaml dans server/models (étapes 6, 8 et 13)
+models:  ## Télécharge Whisper et la voix Piper de config.yaml dans server/models
 	$(PY) tools/download_models.py
 
-say:  ## Fait dire [WAKE (voix anglaise) puis] TEXT par VOICE (SPEAKER) : WAV + MP3 dans SAY_OUT, pour un téléphone
-	$(PY) tools/say.py "$(TEXT)" --voice $(VOICE) $(if $(SPEAKER),--speaker $(SPEAKER)) \
-		$(if $(WAKE),--wake "$(WAKE)" --wake-voice $(WAKE_VOICE)) --out $(SAY_OUT)
+say:  ## Fait dire TEXT par VOICE (SPEAKER) : WAV + MP3 dans SAY_OUT, à jouer au micro depuis un téléphone
+	$(PY) tools/say.py "$(TEXT)" --voice $(VOICE) $(if $(SPEAKER),--speaker $(SPEAKER)) --out $(SAY_OUT)
 
 # Adresse du broker pour les outils finger-* : celle de config.yaml, sauf MQTT_HOST donné en ligne de commande.
 FINGER_HOST = $(if $(filter command line,$(origin MQTT_HOST)),--host $(MQTT_HOST))
@@ -176,37 +164,14 @@ finger-enroll:  ## Enregistre un doigt : make finger-enroll NAME=Denis [ID=3] (d
 finger-delete:  ## Supprime une empreinte (ID=3) ou toutes (ALL=1)
 	$(PY) tools/finger.py $(FINGER_HOST) delete $(if $(ID),--id $(ID)) $(if $(ALL),--all)
 
-latency:  ## Mesure la latence du serveur avant/après l'étape 16 sur les COUNT derniers enregistrements
+latency:  ## Mesure le temps de transcription de Whisper sur les COUNT derniers enregistrements
 	$(PY) tools/latency_check.py --last $(COUNT)
 
 speech-check:  ## Synthèse, transcription et RÉPONSE de l'assistant à TEXT, sans ESP32 (étape 6)
 	$(PY) tools/speech_check.py "$(TEXT)"
 
-transcribe:  ## VAD, transcription et réponse du WAV OUT, sans ESP32 (étapes 6-7)
+transcribe:  ## Transcription et réponse du WAV OUT, sans ESP32 (étape 6)
 	$(PY) tools/speech_check.py --wav $(OUT)
-
-vad:  ## Montre la parole trouvée par la VAD dans OUT, écrit la parole seule (étape 7)
-	$(PY) tools/vad_check.py $(OUT)
-
-vad-all:  ## Passe la VAD sur tous les enregistrements du serveur (étape 7)
-	$(PY) tools/vad_check.py server/recordings/*.wav
-
-diarize:  ## Qui parle quand dans OUT, qui est-ce, qui a dit quoi (étapes 8-10)
-	$(PY) tools/diarize_check.py $(OUT)
-
-diarize-demo:  ## Diarise une séquence à deux voix : la vôtre et celle de Piper (étape 8)
-	$(PY) tools/diarize_check.py --demo
-
-enroll:  ## Crée le profil vocal de NAME avec ses LAST dernières sessions (étape 9)
-	@test -n "$(NAME)" || { echo "Usage : make enroll NAME=Denis [LAST=5]"; exit 1; }
-	$(PY) tools/enroll.py --name "$(NAME)" --last $(LAST)
-
-profiles:  ## Liste les profils vocaux (étape 9)
-	$(PY) tools/enroll.py --list
-
-forget:  ## Supprime le profil vocal de NAME : donnée biométrique (étape 9)
-	@test -n "$(NAME)" || { echo "Usage : make forget NAME=Denis"; exit 1; }
-	$(PY) tools/enroll.py --forget "$(NAME)"
 
 ## ----------------------------------------------------------------- serveur
 

@@ -75,57 +75,12 @@ class TtsSettings:
 
 
 @dataclass(frozen=True)
-class VadSettings:
-    """Détection d'activité vocale par Silero (étape 7)."""
-
-    threshold: float         # probabilité de parole à partir de laquelle une fenêtre compte
-    min_silence_ms: int      # silence plus court : pause entre deux mots, la phrase continue
-    min_speech_ms: int       # parole plus courte : bruit (clic du bouton, toux), ignorée
-    speech_pad_ms: int       # marge gardée autour de chaque segment (attaques et fins de mots)
-
-
-@dataclass(frozen=True)
-class DiarizationSettings:
-    """Diarisation par pyannote : qui parle quand (étape 8)."""
-
-    enabled: bool            # false : pas de diarisation (Raspberry Pi 4, extra non installé)
-    model: str               # dépôt Hugging Face du pipeline
-    max_speakers: int
-    model_dir: Path          # copie locale téléchargée par « make models »
-    direct_below_s: float = 0.0   # parole plus courte : empreinte directe, sans diarisation (étape 16)
-
-
-@dataclass(frozen=True)
-class SpeakerSettings:
-    """Identification du locuteur par empreinte vocale (étape 9). Probabiliste : jamais une sécurité."""
-
-    profiles_dir: Path       # un fichier JSON par personne enrôlée (donnée biométrique)
-    similarity_threshold: float  # cosinus minimal avec un profil pour donner un nom
-
-
-@dataclass(frozen=True)
 class HomeSettings:
     """Domotique (étape 11) : pièces connues et pièce de chaque carte."""
 
     topic_prefix: str            # commandes publiées sur <préfixe>/<pièce>/<appareil>/set
     rooms: dict[str, str]        # nom dit à voix haute → complément : « salon » → « du salon »
     boards: dict[str, str]       # carte → pièce où elle se trouve (« ici », pièce par défaut)
-
-
-@dataclass(frozen=True)
-class WakeSettings:
-    """Mot de réveil et écoute mains libres (étape 13)."""
-
-    enabled: bool
-    words: tuple[str, ...]       # modèles openWakeWord : alexa, hey_jarvis, hey_mycroft
-    threshold: float             # score au-delà duquel le mot est reconnu
-    thresholds: dict[str, float] # seuil propre à un mot, prioritaire sur threshold
-    preroll_ms: int              # audio gardé AVANT la détection (en mémoire seulement)
-    end_silence_ms: int          # silence qui clôt la commande
-    no_speech_timeout_s: float   # rien dit après le mot : on abandonne
-    max_command_s: float         # une commande plus longue est coupée
-    cooldown_s: float            # au plus, attente de la fin de la réponse avant de réécouter
-    model_dir: Path              # models/openwakeword/ (« make models »)
 
 
 @dataclass(frozen=True)
@@ -184,11 +139,7 @@ class Settings:
     sessions: SessionSettings
     stt: SttSettings
     tts: TtsSettings
-    vad: VadSettings
-    diarization: DiarizationSettings
-    speaker: SpeakerSettings
     home: HomeSettings
-    wake: WakeSettings
     access: AccessSettings
     machines: MachinesSettings
     fingerprint: FingerprintSettings
@@ -271,11 +222,7 @@ def load_settings(path: Path) -> Settings:
     logging_cfg = _section(data, "logging")
     stt = _section(data, "stt")
     tts = _section(data, "tts")
-    vad = _section(data, "vad")
-    diarization = _section(data, "diarization")
-    speaker = _section(data, "speaker")
     home = _section(data, "home")
-    wake = _section(data, "wake")
     access = _section(data, "access")
 
     base = path.parent  # les chemins relatifs le sont par rapport à config.yaml
@@ -317,40 +264,10 @@ def load_settings(path: Path) -> Settings:
             length_scale=float(tts["length_scale"]),
             model_path=models_dir / "piper" / f"{tts['voice']}.onnx",
         ),
-        vad=VadSettings(
-            threshold=float(vad["threshold"]),
-            min_silence_ms=int(vad["min_silence_ms"]),
-            min_speech_ms=int(vad["min_speech_ms"]),
-            speech_pad_ms=int(vad["speech_pad_ms"]),
-        ),
-        diarization=DiarizationSettings(
-            enabled=bool(diarization["enabled"]),
-            model=str(diarization["model"]),
-            max_speakers=int(diarization["max_speakers"]),
-            # « pyannote/speaker-diarization-community-1 » → models/pyannote/speaker-diarization-community-1
-            model_dir=models_dir / "pyannote" / str(diarization["model"]).split("/")[-1],
-            direct_below_s=float(diarization.get("direct_below_s", 0.0)),
-        ),
-        speaker=SpeakerSettings(
-            profiles_dir=(base / str(speaker["profiles_dir"])).resolve(),
-            similarity_threshold=float(speaker["similarity_threshold"]),
-        ),
         home=HomeSettings(
             topic_prefix=str(home["topic_prefix"]),
             rooms={str(name): str(complement) for name, complement in dict(home["rooms"]).items()},
             boards={str(board): str(room) for board, room in dict(home["boards"]).items()},
-        ),
-        wake=WakeSettings(
-            enabled=bool(wake["enabled"]),
-            words=tuple(str(word) for word in wake["words"]),
-            threshold=float(wake["threshold"]),
-            thresholds={str(word): float(value) for word, value in dict(wake.get("thresholds") or {}).items()},
-            preroll_ms=int(wake["preroll_ms"]),
-            end_silence_ms=int(wake["end_silence_ms"]),
-            no_speech_timeout_s=float(wake["no_speech_timeout_s"]),
-            max_command_s=float(wake["max_command_s"]),
-            cooldown_s=float(wake["cooldown_s"]),
-            model_dir=models_dir / "openwakeword",
         ),
         access=AccessSettings(
             unknown_level=str(access["unknown"]),

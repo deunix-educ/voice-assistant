@@ -51,7 +51,7 @@ class Policy(Protocol):
 class Transcriber(Protocol):
     """Ce que la boucle attend de la transcription."""
 
-    def transcribe(self, pcm: bytes, words: bool = True) -> Transcript: ...
+    def transcribe(self, pcm: bytes) -> Transcript: ...
 
 
 class Responder(Protocol):
@@ -160,8 +160,7 @@ class VoicePipeline:
                            result.device, result.session_id, result.levels.rms_dbfs, self._silence_rms_dbfs)
             transcript = Transcript(text="", audio_s=0.0, elapsed_s=0.0)
         else:
-            # Pas d'horodatage des mots : personne à départager, une seule voix tient la carte (étape 16).
-            transcript = self._stt.transcribe(self._read(result), words=False)
+            transcript = self._stt.transcribe(self._read(result))
         if transcript.dropped:
             logger.warning("%s : hallucination ecartee : %s", result.device, " | ".join(transcript.dropped))
 

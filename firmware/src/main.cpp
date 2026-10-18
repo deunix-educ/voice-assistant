@@ -7,8 +7,8 @@
  * Sortie (étapes 2 et 5) : MQTT audio/out ou trames série -> PlaybackStream -> FIFO
  *                          -> tâche audio -> I2S1 -> ampli.
  * Réseau (étape 3) : Wi-Fi + MQTT ; état retenu sur voice/<id>/state, testament « offline ».
- * Fiabilisation (étape 15) : compte MQTT, chien de garde des tâches, micro coupé quand
- *                            le serveur annonce son absence (voice/server/status).
+ * Fiabilisation (étape 15) : compte MQTT, chien de garde des tâches, présence du serveur
+ *                            (voice/server/status) signalée dans le journal.
  * Empreinte (branche fingerprint, F1 à F3) : capteur R503 ; un doigt reconnu ouvre la session
  *                            de parole comme le bouton, et la ferme quand il est levé.
  *
@@ -108,12 +108,7 @@ uint32_t captureOverrunsAtStart = 0;
 bool micReady = false;
 bool fingerSession = false;      ///< la session en cours a été ouverte par un doigt (F3) : il la ferme
 
-// Écoute continue (étape 13), pilotée par le serveur. loop() seulement.
-bool listenWanted = false;       ///< le serveur demande le flux continu
-bool streaming = false;          ///< le micro part en continu sur voice/<id>/audio/stream
-bool wakeCapturing = false;      ///< mot de réveil entendu : le serveur écoute la commande
-uint32_t wakeCaptureSinceMs = 0;
-bool serverOnline = false;       ///< présence annoncée par le serveur (étape 15)
+bool serverOnline = false;       ///< présence annoncée par le serveur (étape 15), pour le journal
 
 // Partagés entre loop() et la tâche de capture.
 std::atomic<bool> captureWanted{false};   ///< loop() demande la capture
@@ -123,9 +118,7 @@ uint32_t lastStateMs = 0;
 
 // --- Lecture (étapes 2 et 5) et commandes (étape 5).
 PlaybackStream playback(speaker, playbackFifo);
-void onListen(bool enabled);
-void onCapture(bool active);
-CommandHandler commands(playback, mqtt, devices, onListen, onCapture);
+CommandHandler commands(playback, mqtt, devices);
 void onFingerprintCommand(const char* command, int id, bool all);
 
 // Pile et contrôle de la tâche de capture, alloués statiquement.
@@ -295,11 +288,8 @@ void onServerStatus(const uint8_t* payload, size_t length) {
         Serial.println("# serveur : en ligne");
         return;
     }
-    // Testament du serveur (plantage) ou arrêt : il ne pourra plus dire « listen false ».
-    // Il redemandera l'écoute à son retour, en voyant l'état de la carte.
-    listenWanted = false;
-    wakeCapturing = false;
-    Serial.println("# serveur : ABSENT, ecoute continue coupee");
+    // Testament du serveur (plantage) ou arrêt : une session ouverte maintenant ne recevrait pas de réponse.
+    Serial.println("# serveur : ABSENT (une session de parole ne recevrait pas de reponse)");
 }
 
 /// Appelé à chaque connexion au broker.
@@ -329,19 +319,7 @@ void onMqttMessage(const char* suffix, const uint8_t* payload, size_t length) {
     }
 }
 
-/// Commande « listen » du serveur : active ou coupe l'écoute continue.
-void onListen(bool enabled) {
-    listenWanted = enabled;
-    Serial.printf("# ecoute continue %s par le serveur\n", enabled ? "activee" : "desactivee");
-}
-
-/// Commande « capture » du serveur : mot de réveil entendu (LED allumée) ou commande finie.
-void onCapture(bool active) {
-    wakeCapturing = active;
-    wakeCaptureSinceMs = millis();
-}
-
-/// Arrête la capture et jette ce qui restait : rien ne sort du micro sans raison.
+/// Arrête la capture et jette ce qui restait : rien ne sort du micro sans session.
 void discardCapture() {
     captureWanted.store(false);
     const uint32_t waitStart = millis();
@@ -349,52 +327,6 @@ void discardCapture() {
         delay(1);
     }
     while (captureFifo.read(outgoingChunk, sizeof(outgoingChunk), 0) > 0) {
-    }
-}
-
-/// Arrête le flux continu (étape 13).
-void stopStreaming() {
-    discardCapture();
-    streaming = false;
-}
-
-/**
- * Écoute continue (étape 13) : le micro part vers le serveur, qui guette le mot de réveil.
- * Jamais pendant une réponse parlée : le micro entendrait le haut-parleur, et le Wi-Fi
- * doit alors servir la lecture.
- */
-void updateStreaming() {
-    const bool wanted = listenWanted && serverOnline && mqtt.connected() && !playback.active();
-    if (wanted && !streaming) {
-        captureWanted.store(true);
-        streaming = true;
-    } else if (!wanted && streaming) {
-        stopStreaming();
-    }
-    if (!streaming) {
-        return;
-    }
-    while (captureFifo.available() >= AUDIO_CHUNK_BYTES) {
-        const size_t bytes = captureFifo.read(outgoingChunk, sizeof(outgoingChunk), 0);
-        if (bytes == 0) {
-            break;
-        }
-        mqtt.publishBinary("audio/stream", outgoingChunk, bytes);
-        esp_task_wdt_reset();  // chaque envoi peut attendre le Wi-Fi jusqu'à 10 s : on avance
-    }
-}
-
-/// LED au repos : allumée = commande écoutée, éclair bref = écoute continue, lent = prêt.
-void updateIdleLed() {
-    if (wakeCapturing && (millis() - wakeCaptureSinceMs) > SESSION_MAX_MS) {
-        wakeCapturing = false;  // le serveur n'a jamais dit « fini » : on ne reste pas allumé
-    }
-    if (wakeCapturing) {
-        led.on();
-    } else if (streaming) {
-        led.blink(2000, 100);
-    } else {
-        led.blink(1000);
     }
 }
 
@@ -658,9 +590,6 @@ void onFingerEvent(FingerprintTrigger::Event event, uint16_t id, uint16_t score,
         if (session.active()) {
             break;  // le bouton a ouvert une session entre-temps : il garde le micro
         }
-        if (streaming) {
-            stopStreaming();  // comme le bouton : le doigt reprend la main sur le micro
-        }
         beginCapture();
         led.on();
         break;
@@ -861,13 +790,9 @@ void loop() {
     if (!session.active()) {
         if (button.wasPressed()) {
             button.clearEvents();  // un relâchement périmé ne doit pas clore la session
-            if (streaming) {
-                stopStreaming();  // le bouton reprend la main sur le micro
-            }
             startSession();
         } else if (!fingerTrigger.busy()) {
-            updateStreaming();
-            updateIdleLed();
+            led.blink(1000);  // clignotement lent = prêt, au repos
         }
         led.update();
         return;

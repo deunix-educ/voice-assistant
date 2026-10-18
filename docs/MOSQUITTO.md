@@ -46,7 +46,7 @@ appartiennent à l'utilisateur `mosquitto` du conteneur.
 ## 2. Comptes et droits (étape 15)
 
 Sans authentification, n'importe quel appareil du réseau local peut s'abonner à
-`voice/+/audio/stream` et **écouter le micro** en continu, ou publier une
+`voice/+/audio/in` et **écouter les sessions** des cartes, ou publier une
 commande. Depuis l'étape 15, le broker exige un compte, et un fichier de droits
 (ACL, *Access Control List* : liste de qui peut lire ou écrire quel topic)
 limite chaque compte :
@@ -54,7 +54,7 @@ limite chaque compte :
 | Compte | Qui | Droits ([mosquitto/acl](../mosquitto/acl)) |
 |---|---|---|
 | `voice-server` | le serveur, et les cibles `make mqtt-*`, `tone-mqtt`, `play-mqtt` | lire et écrire `voice/#` et `home/#` |
-| `esp32-01` (= `DEVICE_ID`) | une carte | écrire **ses** `state`, `event`, `audio/in`, `audio/stream` ; lire **ses** `control`, `audio/out`, et `voice/server/status` |
+| `esp32-01` (= `DEVICE_ID`) | une carte | écrire **ses** `state`, `event`, `audio/in` ; lire **ses** `control`, `audio/out`, et `voice/server/status` |
 | `pc-bureau` (= `id` de l'agent) | un agent Linux (étape 15b) | écrire **ses** `agent/<id>/state` et `result` ; lire **ses** `agent/<id>/command` |
 
 Une carte ne peut donc ni écouter une autre carte, ni publier sous son nom, ni
@@ -126,9 +126,6 @@ Messages publiés par le serveur (étape 10) :
 | `home/<pièce>/<appareil>/set` `{"action":"close","by":"Denis","board":"esp32-01",...}` | le serveur (QoS 1), étape 11 | à chaque commande domotique | **non** : rejouée à un abonné tardif, elle ferait bouger un volet |
 | `voice/esp32-01/control` `{"cmd":"device","device":"light","action":"on"}` | le serveur, étape 11 | commande pour la pièce de la carte | non |
 | `voice/esp32-01/event` `{"event":"device",...,"ok":true,"state":"on"}` | l'ESP32, étape 11 | confirmation d'exécution | non |
-| `voice/esp32-01/control` `{"cmd":"listen","enabled":true}` | le serveur, étape 13 | connexion ou redémarrage de la carte ; `false` à l'arrêt du serveur | non |
-| `voice/esp32-01/audio/stream` (PCM binaire, QoS 0) | l'ESP32, étape 13 | en continu tant que l'écoute est active, sauf pendant une réponse ou un appui | non |
-| `voice/esp32-01/control` `{"cmd":"capture","active":true}` | le serveur, étape 13 | mot de réveil entendu (LED allumée) ; `false` à la fin de la commande | non |
 | `voice/esp32-01/control` `{"cmd":"fp_enroll","id":3}`, `{"cmd":"fp_delete","id":3}` ou `{"all":true}`, `{"cmd":"fp_list"}`, `{"cmd":"fp_cancel"}` | `make finger-*`, branche fingerprint F2 | gestion des empreintes du capteur | non |
 | `voice/esp32-01/event` `{"event":"start",...,"finger":2,"score":123}` | l'ESP32, branche fingerprint F3 | début de session ouverte par un doigt reconnu (absent si c'est le bouton) | non |
 | `voice/esp32-01/event` `{"event":"fp_denied","reason":"unknown\|image\|lifted\|sensor"}` | l'ESP32, branche fingerprint F3 | doigt posé mais refusé : pas de session | non |

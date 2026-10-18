@@ -19,7 +19,6 @@ topic readwrite agent/#
 pattern write voice/%u/state
 pattern write voice/%u/event
 pattern write voice/%u/audio/in
-pattern write voice/%u/audio/stream
 pattern read voice/%u/control
 pattern read voice/%u/audio/out
 

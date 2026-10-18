@@ -31,11 +31,9 @@ class FakeStt:
         self.text = text
         self.dropped = dropped
         self.lengths: list[int] = []
-        self.with_words: list[bool] = []
 
-    def transcribe(self, pcm: bytes, words: bool = True) -> Transcript:
+    def transcribe(self, pcm: bytes) -> Transcript:
         self.lengths.append(len(pcm))
-        self.with_words.append(words)
         return Transcript(text=self.text, audio_s=len(pcm) / 32000, elapsed_s=0.8, dropped=self.dropped)
 
 
@@ -118,12 +116,12 @@ def test_full_turn() -> None:
     assert player.sent == [("esp32-01", 16000, "rep-a1b2c3")]
 
 
-def test_whisper_gets_the_whole_session_without_word_times() -> None:
-    """Sans VAD, tout l'audio de la session va à Whisper ; sans diarisation, aucun mot n'a besoin d'instant."""
+def test_whisper_gets_the_whole_session() -> None:
+    """Sans VAD, tout l'audio de la session va à Whisper."""
     stt = FakeStt("quelle heure")
     pipeline(stt, FakeTts(), FakePlayer()).handle(session())
 
-    assert stt.lengths == [len(PCM)] and stt.with_words == [False]
+    assert stt.lengths == [len(PCM)]
 
 
 def test_too_short_session_is_ignored() -> None:

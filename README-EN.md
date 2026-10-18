@@ -12,17 +12,15 @@ and executes the command.
 ## 1. Architecture
 
 ```
+R503 (finger) --+
+                |
 INMP441 -> ESP32 -> MQTT -> Python server (Raspberry Pi / PC)
                                   |
-                        +---------+---------+
-                        |                   |
-                       VAD          Diarization /
-                        |           identification
-                        +---------+---------+
+                  person = the finger's name (fingerprint.users)
                                   |
                            faster-whisper
                                   |
-                              Assistant
+                       Assistant + rights (access)
                                   |
                                 Piper
                                   |
@@ -31,17 +29,17 @@ INMP441 -> ESP32 -> MQTT -> Python server (Raspberry Pi / PC)
                         ESP32 -> MAX98357A -> speaker
 ```
 
-Four often-confused stages, never to be mixed up:
+You put an enrolled finger on the sensor, speak, and lift it: the session lasts as long as the finger.
 
-| Stage | Question it answers |
-|---|---|
-| VAD | Is someone speaking? |
-| Diarization | Who speaks when? (SPEAKER_00, SPEAKER_01…) |
-| Identification | Who is this person? (Denis, Marie, Unknown) |
-| STT | What is being said? |
+| Stage | Question it answers | Answered by |
+|---|---|---|
+| R503 sensor | Who holds the board? | the recognised finger (sensor slot → name) |
+| STT | What is being said? | faster-whisper, on the whole session |
+| Rights | What may they ask for? | `access` in `config.yaml`, per person |
 
-> Voice identification is **probabilistic**. It is never an authentication or
-> security mechanism.
+> The finger says **who holds the board**, not who speaks: someone else can talk while your finger is down. Sensitive
+> actions therefore ask for a confirmation with the same finger. The PTT button identifies nobody. There is no
+> VAD, diarization, voice identification or wake word any more: they live in the `main` branch.
 
 ---
 
@@ -194,18 +192,8 @@ make install-dev
 make install-speech
 make models
 
-# 5. Diarization + speaker identification (~1.3 GB) — optional, heavy on RPi 4
-#    Prerequisite: Hugging Face "Read" token in server/.env (HF_TOKEN=hf_…)
-#    Accept the conditions at https://huggingface.co/pyannote/speaker-diarization-community-1
-cp server/.env.example server/.env    # then HF_TOKEN=hf_…
-make install-diarization
-make models
-
-# 6. Wake word openWakeWord (~5 MB) — optional
-make install-wakeword
-make models
-
-# 7. Run the assistant
+# 5. Enroll a finger (step F2), then run the assistant
+make finger-enroll NAME=Denis
 make run
 ```
 
@@ -213,8 +201,8 @@ make run
 
 | File | Contents |
 |---|---|
-| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD`, `HF_TOKEN` |
-| `server/config.yaml` | rooms, voices, access rights, machine list |
+| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
+| `server/config.yaml` | rooms, voices, fingers and access rights, machine list |
 
 For help on all targets: `make help`.
 
@@ -270,7 +258,7 @@ machines:
 ```bash
 make run        # server (terminal 1)
 make agent-run  # agent in test mode on this machine (terminal 2)
-# Say: "Hey Mycroft, éteins le PC du bureau"
+# Finger down: "éteins le PC du bureau"
 # → the agent prints: essai : systemctl poweroff (non exécuté)
 ```
 
@@ -291,15 +279,10 @@ make play-esp OUT=recordings/test.wav   # play it on the ESP32 speaker (step 2)
 make tone-esp TONE=440                  # pure tone on the ESP32 speaker (step 2)
 make run                                # assistant: answers every question (step 6)
 make speech-check TEXT="Quelle heure est-il ?"  # recognition and synthesis, no ESP32
-make say WAKE="Hey Mycroft" TEXT="Ouvre la porte du salon." VOICE=fr_FR-tom-medium  # WAV + MP3 for a phone
-make latency                            # server latency before/after step 16, on real recordings
+make say TEXT="Ouvre la porte du salon." VOICE=fr_FR-tom-medium  # WAV + MP3 to play at the microphone from a phone
+make latency                            # Whisper transcription time on real recordings
+make finger-enroll NAME=Denis           # enroll a finger (two scans); finger-list, finger-delete ID=2
 make transcribe OUT=server/recordings/<file>.wav
-make vad OUT=server/recordings/<file>.wav     # speech found by the VAD (step 7)
-make vad-all                            # VAD over every server recording
-make diarize OUT=server/recordings/<file>.wav   # who speaks when, who, who said what (steps 8-10)
-make diarize-demo                       # two voices: yours and Piper's
-make enroll NAME=Denis                  # voice profile from the last 5 sessions (step 9)
-make profiles                           # list profiles; make forget NAME=Denis deletes one
 make mqtt-watch                         # text messages voice/… and home/# (no audio)
 make mqtt-user NAME=esp32-01            # MQTT account for a board, or the server (step 15)
 make agent-run                          # Linux agent of this PC, test mode (step 15b)
@@ -315,7 +298,8 @@ make lint                                # pyright type check
 
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
-Current step: **done — steps 1 to 16 are validated**.
+Current step: **done — steps 1 to 16 are validated** (`main` branch).
+`fingerprint` branch: F1 to F4 validated, F4b (removing the unused code) in progress, then F5 (ESP32-S3 Mini).
 
 ### `fingerprint` branch — step F4: rights follow the finger
 
@@ -410,6 +394,9 @@ holds the box. Wiring: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 16, 17 
 
 ### Step 16 — optimisation
 
+> On the `fingerprint` branch (F4), diarization and the voice fingerprint are gone: what remains is the synthesis cache, the
+> unbuffered sends and `make latency`, which now only measures Whisper. The measurements below come from the `main` branch.
+
 Measure first, optimise next: `make latency` replays the latest recordings through the
 old chain, then the new one. On 54 real commands (PC, 20 logical cores): **1.6 s → 1.1 s**
 between the end of the sentence and the recognised text, same text 54 times out of 54.
@@ -436,7 +423,7 @@ sentence are no longer separated (they were at step 10); beyond 4 s nothing chan
 
 ### Step 15b — Linux machines on the network
 
-"Hey Mycroft, éteins le PC du bureau": each machine runs an **agent**
+"Éteins le PC du bureau": each machine runs an **agent**
 ([agent/voice_agent.py](agent/voice_agent.py)), a small MQTT client that only runs
 the actions in **its own** list (`/etc/voice-assistant/agent.yaml`): fixed commands,
 no shell. The server only sends an action name. "Allume" wakes a machine that is
@@ -450,7 +437,7 @@ off through **Wake-on-LAN** (a network packet received by the sleeping network c
 | `reboot` | redémarre, relance | full + confirmation |
 
 1. Try it on this PC without shutting anything down: `make agent-run` (creates `agent/agent.yaml` in test mode).
-2. `make run`, then "Hey Mycroft, éteins le PC du bureau" → confirmation → "oui":
+2. `make run`, then finger down: "éteins le PC du bureau" → confirmation → same finger: "oui":
    the agent prints `essai : systemctl poweroff (non execute)`.
 3. Real machine: copy `agent/` to it, `make -C agent install`, edit
    `/etc/voice-assistant/agent.yaml`, and name it in `server/config.yaml` (`machines.list`).
@@ -463,7 +450,7 @@ In production, use the accounts and rights of step 15 (`mosquitto/acl` has the a
 | What | How |
 |---|---|
 | MQTT accounts and rights | no anonymous access; a board reads and writes **its own** topics only ([docs/MOSQUITTO.md](docs/MOSQUITTO.md) §2) |
-| Server presence | `voice/server/status`: retained `online`, `offline` last will; server gone = board microphones off |
+| Server presence | `voice/server/status`: retained `online`, `offline` last will; server gone = reported in the board's log |
 | Watchdog | board frozen for more than 15 s → reboot, reason `watchdog` in the `boot` event |
 | Network | TCP connection to the broker within 1 s; Wi-Fi restarted after 30 s without it |
 | Log | copied to `server/logs/voice-server.log` (rotating files, 4 MB at most) |
@@ -477,51 +464,24 @@ Setup, **in this order**: a broker that is still open already accepts clients th
 
 ### Step 14 — per-profile rights
 
-> On the `fingerprint` branch the "profile" is the person of the **finger** (step F4): no voice score, and the full
-> level no longer needs `full_min_score`.
+> On the `fingerprint` branch the "profile" is the person of the **finger** (step F4): see above. No voice score, no
+> `full_min_score`.
 
 | Level | Rights | Given to |
 |---|---|---|
-| **complet** (full) | everything; sensitive actions (open the door) after a "oui" **confirmation** | profiles listed in `access.users`, **if the voice is clearly recognised** (score ≥ 0.6) |
-| **standard** | lights, shutters, closing the door | enrolled profile without a level (`access.default`) |
-| **limite** (limited) | conversation only | unknown voice (`access.unknown`) |
+| **complet** (full) | everything; sensitive actions (open the door) after a "oui" **confirmation** with the same finger | people listed in `access.users` |
+| **standard** | lights, shutters, closing the door | a person named by a finger, without a level (`access.default`) |
+| **limite** (limited) | conversation only | the PTT button, or a finger with no name (`access.unknown`) |
 
 Rules per device and action in `config.yaml` (section `access`); an action missing from the
-rules requires the full level. Names in `access.users` are those shown by `make profiles`.
+rules requires the full level. Names in `access.users` are those of `fingerprint.users`.
 
-1. `make run` (server only, firmware unchanged).
-2. "Hey Mycroft, allume la lumière" → executed (Denis, full).
-3. "Hey Mycroft, ouvre la porte" → "Confirmez-vous : ouvrir la porte du salon ?" →
-   "Hey Mycroft, oui" → "J'ouvre la porte du salon."; "non" → "D'accord, j'annule."
-4. A phone voice (standard profile): "ouvre la porte" → refused; a non-enrolled voice:
-   "allume la lumière" → "Je ne vous ai pas reconnu…". Ready-made sentences:
-   `recordings/voix-test/tom-porte.mp3`, `pierre-lumiere.mp3`; more with `make say`. The wake word is spoken by an English
-   voice (`WAKE`): a synthetic voice saying it the French way is not recognised.
-
-**Reminder**: a voice is never proof of identity. These rights prevent mistakes and guests'
-commands, not an attack (recording, impersonation).
+**Reminder**: a finger is not absolute proof (a copied fingerprint, or a finger put down by one person while another
+talks). These rights prevent mistakes and guests' commands, not a determined attack.
 
 ### Step 13 — wake word (hands-free)
 
-The server asks the board to stream its microphone continuously (`voice/<board>/audio/stream`)
-and listens for the wake word with openWakeWord: **"Alexa"**, **"Hey Mycroft"** or **"Hey
-Jarvis"**, pronounced the English way. Once heard, it keeps the command until the final
-silence, then handles it like a push-to-talk session. The button still works at any time.
-
-LED: **short flash every 2 s** = continuous listening; **on** = wake word heard, command in
-progress; slow blink = ready, no continuous listening.
-
-1. `make install-wakeword` then `make models` (5 ONNX models, 5 MB).
-2. `make fw-upload SERIAL_PORT=/dev/ttyUSB0` (step 13 firmware), then `make run`.
-3. "Alexa, allume la lumière" → LED on during the command, then answer and command.
-4. A sentence without the wake word → nothing happens, nothing is recorded.
-5. "Alexa" alone, then silence → back to standby after 4 s.
-
-**Privacy**: before the wake word, only the last 500 ms are kept in memory, nothing is
-written to disk (checked by a test). But audio flows continuously over the network: as long
-as the broker accepts anonymous clients (step 15), anyone on the LAN can listen to it.
-Turn listening off: `wake.enabled: false`, or
-`make mqtt-control MSG='{"cmd":"listen","enabled":false}'`.
+> **Removed on the `fingerprint` branch** (step F4b): the finger replaces the wake word and continuous listening. The code and its instructions are in the `main` branch.
 
 ### Step 12 — anti-jitter output buffer
 
@@ -560,74 +520,19 @@ alarm to these commands; per-profile rights come in step 14.
 
 ### Step 10 — who said what
 
-Whisper gives the time of each word, the diarization the time of each speaker turn, on
-the same audio: each word goes to whoever was speaking at that moment. The server
-publishes the result on `voice/<board>/transcript` and the assistant calls the person by name.
-
-```json
-{"session": "453cce", "utterances": [
-  {"speaker": "Denis", "text": "Ouvrir la porte.", "start": 0.0, "end": 1.26, "score": 0.6},
-  {"speaker": "Siwis", "text": "Je suis la voix de synthèse...", "start": 1.5, "end": 4.46, "score": 0.6},
-  {"speaker": "Denis", "text": "Fermez la porte.", "start": 4.92, "end": 5.86, "score": 0.6}]}
-```
-
-1. `make diarize OUT=server/recordings/<file>.wav`: who said what, and the MQTT message, no board needed.
-2. `make mqtt-watch` in one terminal, `make run` in another.
-3. "Bonjour": the board answers "Bonjour Denis !"; `voice/esp32-01/transcript` shows up.
-4. A two-voice session (you, a phone voice, you again): three utterances.
+> **Removed on the `fingerprint` branch** (step F4b): a session has one person only, the finger's (the `transcript` message keeps one utterance). The code and its instructions are in the `main` branch.
 
 ### Step 9 — speaker identification
 
-Each voice found by the diarization is summarised by an **embedding** (256 numbers,
-WeSpeaker model from the pyannote pipeline), compared by **cosine similarity** with the
-enrolled profiles. Above the threshold (0.45, measured on this bench), the name;
-otherwise "Inconnu". **It is an estimate, never a security feature**: a recording or an
-impersonation can fool it.
-
-1. `make run`, then 5 varied sentences of 1 to 4 s, alone, at a normal distance.
-2. `make enroll NAME=Denis`: profile built from those 5 sessions; sessions that are too
-   short, contain several voices or do not match the others are dropped.
-3. New questions (the server picks up the profile without restarting): the log shows
-   `SPEAKER_00 = Denis (0.74)`; another person or a loudspeaker voice gives
-   `Inconnu (0.05, proche de Denis)`.
-4. `make diarize-demo`: your voice recognised, Piper's voice "Inconnu".
-
-Profiles are **biometric data**: `server/profiles/`, never versioned, one readable JSON
-file per person; `make forget NAME=...` deletes it.
+> **Removed on the `fingerprint` branch** (step F4b): the finger identifies the person, no longer the voice. The code and its instructions are in the `main` branch.
 
 ### Step 8 — diarization: who speaks when
 
-The speech found by the VAD is split into speaker turns: `SPEAKER_00` from 0.0 to 1.3 s,
-`SPEAKER_01` from 1.4 to 2.9 s... Labels only hold within one session: putting a name on
-a voice is step 9. Model `pyannote/speaker-diarization-community-1` (33 MB), run on CPU,
-**pyannote telemetry disabled** (enabled by default in version 4).
-
-1. Create an account on <https://huggingface.co>, then **accept the conditions** at
-   <https://huggingface.co/pyannote/speaker-diarization-community-1>.
-2. Create a "Read" token at <https://huggingface.co/settings/tokens> and put it in
-   `server/.env`: `HF_TOKEN=hf_...` (`cp server/.env.example server/.env` if missing).
-3. `make install-diarization` then `make models`. No Internet access afterwards.
-4. `make diarize-demo`: your voice, Piper's voice, your voice → two speakers expected.
-5. `make run`: one session where two people take turns; the log shows
-   `2 locuteur(s) : SPEAKER_00 0.00-1.30, SPEAKER_01 1.40-2.90`.
-
-Too heavy for a Raspberry Pi 4: set `diarization.enabled: false` in `config.yaml`.
+> **Removed on the `fingerprint` branch** (step F4b): nobody is left to tell apart: a session is one finger's. The code and its instructions are in the `main` branch.
 
 ### Step 7 — voice activity detection (VAD)
 
-The server now transcribes speech only: leading and trailing silence is removed,
-sessions without speech (silent press, click) are dropped without calling Whisper.
-Silero ships with faster-whisper: nothing more to install.
-
-1. `make vad-all`: one character per 32 ms window (`#` speech, `_` silence) for
-   each recording, plus the number of sessions without speech.
-2. `make vad OUT=server/recordings/<file>.wav` then `make play OUT=recordings/parole.wav`:
-   speech only, silences removed.
-3. `make run` (restart it: the code changed), ask a few questions and press once
-   without speaking. The log shows `parole 1.36 s sur 2.00 s (segments 0.49-1.85 s)`,
-   and `sans parole (VAD)` for the silent press, answered immediately.
-
-Settings in `config.yaml`, section `vad`: threshold, minimum pause, minimum speech, padding.
+> **Removed on the `fingerprint` branch** (step F4b): the finger bounds the session; a completely silent one is dropped by `stt.min_rms_dbfs`. The code and its instructions are in the `main` branch.
 
 ### Step 6 — MVP: the assistant answers
 

@@ -27,15 +27,6 @@ KNOWN_HALLUCINATIONS = (
 
 
 @dataclass(frozen=True)
-class Word:
-    """Un mot et son instant dans l'audio transcrit (étape 10 : à qui l'attribuer)."""
-
-    text: str               # tel que Whisper l'écrit, espace initiale comprise : « Ferme », « -moi »
-    start_s: float
-    end_s: float
-
-
-@dataclass(frozen=True)
 class Transcript:
     """Résultat d'une transcription."""
 
@@ -43,7 +34,6 @@ class Transcript:
     audio_s: float          # durée de l'audio transcrit
     elapsed_s: float        # temps de calcul
     dropped: tuple[str, ...] = ()  # segments écartés comme hallucinations
-    words: tuple[Word, ...] = ()   # mots des segments gardés, dans l'ordre
 
 
 class SpeechToText:
@@ -80,13 +70,8 @@ class SpeechToText:
         self.transcribe(bytes(sample_rate * 2))
         logger.info("whisper %s charge en %.1f s", stt.model, time.monotonic() - began)
 
-    def transcribe(self, pcm: bytes, words: bool = True) -> Transcript:
-        """Transcrit le PCM et écarte les segments suspects.
-
-        Args:
-            words: horodater chaque mot. Utile seulement pour répartir le texte entre
-                plusieurs locuteurs (étape 10) ; sans cela, ~0,1 s de moins (mesuré, étape 16).
-        """
+    def transcribe(self, pcm: bytes) -> Transcript:
+        """Transcrit le PCM et écarte les segments suspects."""
         began = time.monotonic()
         audio = np.frombuffer(pcm[: len(pcm) // 2 * 2], dtype="<i2").astype(np.float32) / 32768.0
         segments, _ = self._model.transcribe(
@@ -96,13 +81,11 @@ class SpeechToText:
             # Chaque question est indépendante : sans cela, une erreur se propage d'un segment à l'autre.
             condition_on_previous_text=False,
             no_speech_threshold=self._stt.no_speech_threshold,
-            vad_filter=False,  # la VAD (étape 7) a déjà retiré les silences
-            word_timestamps=words,  # instant de chaque mot : +5 à 10 % de calcul (mesuré)
+            vad_filter=False,  # pas de VAD (F4) : le doigt borne la session, le silence est filtré en amont
         )
 
         kept: list[str] = []
         dropped: list[str] = []
-        found: list[Word] = []
         for segment in segments:  # générateur : le calcul se fait pendant ce parcours
             text = segment.text.strip()
             if not text:
@@ -111,13 +94,10 @@ class SpeechToText:
                 dropped.append(text)
             else:
                 kept.append(text)
-                found.extend(Word(text=w.word, start_s=float(w.start), end_s=float(w.end))
-                             for w in segment.words or ())
 
         return Transcript(
             text=" ".join(kept),
             audio_s=audio.size / self._sample_rate,
             elapsed_s=time.monotonic() - began,
             dropped=tuple(dropped),
-            words=tuple(found),
         )

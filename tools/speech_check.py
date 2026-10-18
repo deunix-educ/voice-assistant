@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
-"""Vérifie VAD, transcription, réponse et synthèse sans ESP32 ni broker (étapes 6-7).
+"""Vérifie transcription, réponse et synthèse sans ESP32 ni broker (étapes 6, F4).
 
 Deux usages :
     texte → Piper → Whisper → Assistant → Piper        (la chaîne se relit elle-même)
-    WAV   → VAD → Whisper → Assistant → Piper      (un enregistrement de l'ESP32, comme le serveur)
+    WAV   → Whisper → Assistant → Piper            (un enregistrement de l'ESP32, comme le serveur)
 
 La réponse synthétisée est écrite dans --out, à écouter avec « make play ».
 
@@ -29,7 +29,6 @@ from voice_server.audio_resampler import AudioFormatError, AudioResampler  # noq
 from voice_server.settings import load_settings  # noqa: E402
 from voice_server.speech_to_text import SpeechToText  # noqa: E402
 from voice_server.text_to_speech import TextToSpeech  # noqa: E402
-from voice_server.voice_activity import VoiceActivityDetector  # noqa: E402
 
 logger = logging.getLogger("speech_check")
 
@@ -65,10 +64,6 @@ def main(argv: list[str]) -> int:
         except (AudioFormatError, FileNotFoundError) as error:
             logger.error("%s", error)
             return 1
-        vad = VoiceActivityDetector(settings.vad, audio.sample_rate).detect(pcm)
-        logger.info("VAD : parole %.2f s sur %.2f s, segments %s", vad.speech_s, vad.total_s,
-                    f"{vad.bounds()} s" if vad.has_speech else "aucun")
-        pcm = vad.speech_pcm  # sans parole, Whisper reçoit un audio vide et ne rend rien
     else:
         spoken = tts.synthesize(args.text)
         logger.info("synthese de la question : %.2f s de calcul pour %.2f s de parole",

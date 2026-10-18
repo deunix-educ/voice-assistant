@@ -11,17 +11,15 @@ et répond en synthèse vocale ; l'ESP32 joue la réponse et exécute la command
 ## 1. Architecture
 
 ```
+R503 (doigt) ---+
+                |
 INMP441 -> ESP32 -> MQTT -> Serveur Python (Raspberry Pi / PC)
                                   |
-                        +---------+---------+
-                        |                   |
-                       VAD          Diarisation /
-                        |           identification
-                        +---------+---------+
+                   personne = nom du doigt (fingerprint.users)
                                   |
                            faster-whisper
                                   |
-                              Assistant
+                       Assistant + droits (access)
                                   |
                                 Piper
                                   |
@@ -30,17 +28,17 @@ INMP441 -> ESP32 -> MQTT -> Serveur Python (Raspberry Pi / PC)
                         ESP32 -> MAX98357A -> haut-parleur
 ```
 
-Quatre traitements souvent confondus, à ne jamais mélanger :
+On pose un doigt enregistré sur le capteur, on parle, on le lève : la session dure autant que le doigt.
 
-| Bloc | Question |
-|---|---|
-| VAD | Est-ce que quelqu'un parle ? |
-| Diarisation | Qui parle à quel moment ? (SPEAKER_00, SPEAKER_01…) |
-| Identification | Qui est cette personne ? (Denis, Marie, Inconnu) |
-| STT | Qu'est-ce qui est dit ? |
+| Bloc | Question | Qui répond |
+|---|---|---|
+| Capteur R503 | Qui tient la carte ? | le doigt reconnu (emplacement du capteur → nom) |
+| STT | Qu'est-ce qui est dit ? | faster-whisper, sur toute la session |
+| Droits | Qu'a-t-il le droit de demander ? | `access` de `config.yaml`, par personne |
 
-> L'identification vocale est **probabiliste**. Ce n'est jamais un mécanisme
-> d'authentification ni de sécurité.
+> Le doigt dit **qui tient la carte**, pas qui parle : quelqu'un d'autre peut parler pendant que votre doigt est
+> posé. Les actions sensibles demandent donc une confirmation avec le même doigt. Le bouton PTT n'identifie personne.
+> Il n'y a plus de VAD, de diarisation, d'identification de la voix ni de mot de réveil : ils sont dans la branche `main`.
 
 ---
 
@@ -196,19 +194,8 @@ make install-dev
 make install-speech
 make models
 
-# 5. Diarisation + identification vocale (~1,3 Go) — optionnel, lourd sur RPi 4
-#    Prérequis : compte Hugging Face + accepter les conditions sur
-#    https://huggingface.co/pyannote/speaker-diarization-community-1
-#    Créer un jeton « Read » sur https://huggingface.co/settings/tokens
-cp server/.env.example server/.env    # puis HF_TOKEN=hf_…
-make install-diarization
-make models
-
-# 6. Mot de réveil openWakeWord (~5 Mo) — optionnel
-make install-wakeword
-make models
-
-# 7. Lancer l'assistant
+# 5. Enregistrer un doigt (étape F2), puis lancer l'assistant
+make finger-enroll NAME=Denis
 make run
 ```
 
@@ -216,8 +203,8 @@ make run
 
 | Fichier | Contenu |
 |---|---|
-| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD`, `HF_TOKEN` |
-| `server/config.yaml` | pièces, voix, droits d'accès, liste des machines |
+| `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
+| `server/config.yaml` | pièces, voix, doigts et droits d'accès, liste des machines |
 
 Pour l'aide sur toutes les cibles : `make help`.
 
@@ -273,7 +260,7 @@ machines:
 ```bash
 make run        # serveur (terminal 1)
 make agent-run  # agent en mode essai sur cette machine (terminal 2)
-# Dire : « Hey Mycroft, éteins le PC du bureau »
+# Doigt posé : « éteins le PC du bureau »
 # → l'agent affiche : essai : systemctl poweroff (non exécuté)
 ```
 
@@ -294,15 +281,10 @@ make play-esp OUT=recordings/essai.wav # joue le WAV sur le haut-parleur de l'ES
 make tone-esp TONE=440                 # son pur sur le haut-parleur de l'ESP32 (étape 2)
 make run                               # assistant : répond à chaque question (étape 6)
 make speech-check TEXT="Quelle heure est-il ?"  # transcription et synthèse, sans ESP32
-make say WAKE="Hey Mycroft" TEXT="Ouvre la porte du salon." VOICE=fr_FR-tom-medium  # WAV + MP3 pour un téléphone
-make latency                           # latence du serveur avant/après l'étape 16, sur de vrais enregistrements
+make say TEXT="Ouvre la porte du salon." VOICE=fr_FR-tom-medium  # WAV + MP3 à jouer au micro depuis un téléphone
+make latency                           # temps de transcription de Whisper sur de vrais enregistrements
+make finger-enroll NAME=Denis          # enregistre un doigt (deux poses) ; finger-list, finger-delete ID=2
 make transcribe OUT=server/recordings/<fichier>.wav
-make vad OUT=server/recordings/<fichier>.wav   # parole trouvée par la VAD (étape 7)
-make vad-all                           # VAD sur tous les enregistrements du serveur
-make diarize OUT=server/recordings/<fichier>.wav  # qui parle quand, qui, qui a dit quoi (étapes 8-10)
-make diarize-demo                      # deux voix : la vôtre et celle de Piper
-make enroll NAME=Denis                 # profil vocal depuis les 5 dernières sessions (étape 9)
-make profiles                          # liste des profils ; make forget NAME=Denis pour en supprimer un
 make mqtt-watch                        # messages texte voice/… et home/# (sans l'audio)
 make mqtt-user NAME=esp32-01           # compte MQTT d'une carte, ou du serveur (étape 15)
 make agent-run                         # agent Linux de ce PC, en mode essai (étape 15b)
@@ -318,7 +300,8 @@ make lint                           # typage pyright
 
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
-Étape courante : **terminée — les étapes 1 à 16 sont validées**.
+Étape courante : **terminée — les étapes 1 à 16 sont validées** (branche `main`).
+Branche `fingerprint` : F1 à F4 validées, F4b (suppression du code inutile) en cours, puis F5 (ESP32-S3 Mini).
 
 ### Branche `fingerprint` — étape F4 : les droits suivent le doigt
 
@@ -413,6 +396,9 @@ tient le boîtier. Câblage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 
 
 ### Étape 16 — optimisation
 
+> Sur la branche `fingerprint` (F4), la diarisation et l'empreinte vocale ont disparu : restent le cache de synthèse, les envois
+> sans attente et `make latency`, qui ne mesure plus que Whisper. Les mesures ci-dessous datent de la branche `main`.
+
 Mesurer d'abord, optimiser ensuite : `make latency` rejoue les derniers enregistrements
 avec l'ancienne puis la nouvelle chaîne. Sur 54 commandes réelles (PC, 20 cœurs logiques) :
 **1,6 s → 1,1 s** entre la fin de la phrase et le texte reconnu, même texte 54 fois sur 54.
@@ -439,7 +425,7 @@ phrase courte ne sont plus séparées (elles l'étaient à l'étape 10) ; au-del
 
 ### Étape 15b — machines Linux du réseau
 
-« Hey Mycroft, éteins le PC du bureau » : chaque machine fait tourner un **agent**
+« Éteins le PC du bureau » : chaque machine fait tourner un **agent**
 ([agent/voice_agent.py](agent/voice_agent.py)), petit client MQTT qui n'exécute que
 les actions de **sa** liste (`/etc/voice-assistant/agent.yaml`), commandes fixes, sans
 shell. Le serveur n'envoie qu'un nom d'action. « Allume » réveille une machine
@@ -453,7 +439,7 @@ shell. Le serveur n'envoie qu'un nom d'action. « Allume » réveille une machin
 | `reboot` | redémarre, relance | complet + confirmation |
 
 1. Essai sur ce PC, sans rien éteindre : `make agent-run` (crée `agent/agent.yaml` en mode essai).
-2. `make run`, puis « Hey Mycroft, éteins le PC du bureau » → confirmation → « oui » :
+2. `make run`, puis doigt posé : « éteins le PC du bureau » → confirmation → même doigt : « oui » :
    l'agent affiche `essai : systemctl poweroff (non execute)`.
 3. Machine réelle : copier `agent/` dessus, `make -C agent install`, régler
    `/etc/voice-assistant/agent.yaml`, et la nommer dans `server/config.yaml` (`machines.list`).
@@ -466,7 +452,7 @@ En production, les comptes et droits de l'étape 15 (`mosquitto/acl` contient le
 | Quoi | Comment |
 |---|---|
 | Comptes MQTT et droits | broker sans accès anonyme ; une carte ne lit et n'écrit que **ses** topics ([docs/MOSQUITTO.md](docs/MOSQUITTO.md) §2) |
-| Présence du serveur | `voice/server/status` : `online` retenu, testament `offline` ; serveur absent = micros des cartes coupés |
+| Présence du serveur | `voice/server/status` : `online` retenu, testament `offline` ; serveur absent = signalé dans le journal de la carte |
 | Chien de garde (*watchdog*) | carte figée plus de 15 s → redémarrage, cause `watchdog` dans l'événement `boot` |
 | Réseau | connexion TCP au broker en 1 s au plus ; Wi-Fi relancé après 30 s d'absence |
 | Journal | copie dans `server/logs/voice-server.log` (fichiers tournants, 4 Mo au plus) |
@@ -480,52 +466,24 @@ Mise en place, **dans cet ordre** : un broker encore ouvert accepte déjà les c
 
 ### Étape 14 — droits par profil
 
-> Sur la branche `fingerprint`, le « profil » est la personne du **doigt** (étape F4) : plus de score de voix, et le niveau
-> complet n'exige plus `full_min_score`.
+> Sur la branche `fingerprint`, le « profil » est la personne du **doigt** (étape F4) : voir ci-dessus. Plus de score de voix,
+> ni de `full_min_score`.
 
 | Niveau | Droits | Attribué à |
 |---|---|---|
-| **complet** | tout ; actions sensibles (ouvrir la porte) après **confirmation** « oui » | profils listés dans `access.users`, **si la voix est reconnue nettement** (score ≥ 0,6) |
-| **standard** | lumières, volets, fermer la porte | profil enrôlé sans niveau (`access.default`) |
-| **limite** | conversation seulement | voix inconnue (`access.unknown`) |
+| **complet** | tout ; actions sensibles (ouvrir la porte) après **confirmation** « oui » du même doigt | personnes listées dans `access.users` |
+| **standard** | lumières, volets, fermer la porte | personne nommée par un doigt, sans niveau (`access.default`) |
+| **limite** | conversation seulement | bouton PTT, ou doigt sans nom (`access.unknown`) |
 
 Règles par appareil et action dans `config.yaml` (section `access`) ; une action absente des
-règles exige le niveau complet. Les noms de `access.users` sont ceux de `make profiles`.
+règles exige le niveau complet. Les noms de `access.users` sont ceux de `fingerprint.users`.
 
-1. `make run` (serveur seul, firmware inchangé).
-2. « Hey Mycroft, allume la lumière » → exécuté (Denis, complet).
-3. « Hey Mycroft, ouvre la porte » → « Confirmez-vous : ouvrir la porte du salon ? » →
-   « Hey Mycroft, oui » → « J'ouvre la porte du salon. » ; « non » → « D'accord, j'annule. »
-4. Une voix du téléphone (profil standard) : « ouvre la porte » → refus ; une voix non
-   enrôlée : « allume la lumière » → « Je ne vous ai pas reconnu… ». Phrases prêtes :
-   `recordings/voix-test/tom-porte.mp3`, `pierre-lumiere.mp3` ; d'autres avec `make say`. Le mot de réveil y est dit par une
-   voix anglaise (`WAKE`) : prononcé à la française par une voix de synthèse, il n'est pas reconnu.
-
-**Rappel** : la voix n'est jamais une preuve d'identité. Ces droits évitent les erreurs et les
-commandes d'un invité, pas une attaque (enregistrement, imitation).
+**Rappel** : un doigt n'est pas une preuve absolue (empreinte copiée, doigt posé par un tiers pendant que quelqu'un
+d'autre parle). Ces droits évitent les erreurs et les commandes d'un invité, pas une attaque déterminée.
 
 ### Étape 13 — mot de réveil (mains libres)
 
-Le serveur demande à la carte d'envoyer son micro en continu (`voice/<carte>/audio/stream`)
-et guette le mot de réveil avec openWakeWord : **« Alexa »**, **« Hé Maïcrofte »** (Hey
-Mycroft) ou **« Hey Djâr-viss »** (Hey Jarvis), prononcés à l'anglaise. Une fois le mot
-entendu, il garde la commande jusqu'au silence final, puis la traite comme une session du
-bouton. Le bouton reste utilisable à tout moment.
-
-LED : **éclair bref toutes les 2 s** = écoute continue ; **allumée** = mot entendu, commande
-en cours ; clignotement lent = prêt, sans écoute continue.
-
-1. `make install-wakeword` puis `make models` (5 modèles ONNX, 5 Mo).
-2. `make fw-upload SERIAL_PORT=/dev/ttyUSB0` (firmware de l'étape 13), puis `make run`.
-3. « Alexa, allume la lumière » → LED allumée pendant la commande, puis réponse et commande.
-4. Une phrase sans le mot → rien ne se passe, rien n'est enregistré.
-5. « Alexa » seul, puis rien → retour en veille après 4 s.
-
-**Vie privée** : avant le mot, seules les 500 dernières ms restent en mémoire, rien n'est
-écrit sur disque (vérifié par un test). Mais le son circule en continu sur le réseau : tant
-que le broker accepte les clients anonymes (étape 15), n'importe qui sur le réseau local peut
-l'écouter. Couper l'écoute : `wake.enabled: false`, ou
-`make mqtt-control MSG='{"cmd":"listen","enabled":false}'`.
+> **Retirée sur la branche `fingerprint`** (étape F4b) : le doigt remplace le mot de réveil et l'écoute continue. Le code et son mode d'emploi sont dans la branche `main`.
 
 ### Étape 12 — tampon de sortie anti-gigue
 
@@ -564,73 +522,19 @@ de porte ou une alarme sur ces commandes ; les droits par profil arrivent à l'�
 
 ### Étape 10 — qui a dit quoi
 
-Whisper donne l'instant de chaque mot, la diarisation celui de chaque tour de parole, sur
-le même audio : chaque mot va au locuteur qui parlait à ce moment. Le serveur publie le
-résultat sur `voice/<carte>/transcript` et l'assistant appelle la personne par son nom.
-
-```json
-{"session": "453cce", "utterances": [
-  {"speaker": "Denis", "text": "Ouvrir la porte.", "start": 0.0, "end": 1.26, "score": 0.6},
-  {"speaker": "Siwis", "text": "Je suis la voix de synthèse...", "start": 1.5, "end": 4.46, "score": 0.6},
-  {"speaker": "Denis", "text": "Fermez la porte.", "start": 4.92, "end": 5.86, "score": 0.6}]}
-```
-
-1. `make diarize OUT=server/recordings/<fichier>.wav` : qui a dit quoi, et le message MQTT, sans carte.
-2. `make mqtt-watch` dans un terminal, `make run` dans un autre.
-3. « Bonjour » : la carte répond « Bonjour Denis ! » ; `voice/esp32-01/transcript` apparaît.
-4. Une session à deux voix (vous, puis une voix du téléphone, puis vous) : trois interventions.
+> **Retirée sur la branche `fingerprint`** (étape F4b) : une session n'a plus qu'une personne, celle du doigt (le message `transcript` garde une intervention). Le code et son mode d'emploi sont dans la branche `main`.
 
 ### Étape 9 — identification du locuteur
 
-Chaque voix trouvée par la diarisation est résumée par une **empreinte** (256 nombres,
-modèle WeSpeaker du pipeline pyannote), comparée par **similarité cosinus** aux profils
-enrôlés. Au-dessus du seuil (0,45, mesuré sur ce banc), le nom ; sinon « Inconnu ».
-**C'est une estimation, jamais une sécurité** : un enregistrement ou une imitation peut tromper.
-
-1. `make run`, puis 5 phrases variées de 1 à 4 s, seul, à distance normale.
-2. `make enroll NAME=Denis` : profil créé depuis ces 5 sessions ; les sessions trop
-   courtes, à plusieurs voix ou qui ne ressemblent pas aux autres sont écartées.
-3. Nouvelles questions (le serveur voit le profil sans redémarrer) : le journal affiche
-   `SPEAKER_00 = Denis (0.74)` ; une autre personne ou une voix de haut-parleur donne
-   `Inconnu (0.05, proche de Denis)`.
-4. `make diarize-demo` : votre voix reconnue, la voix Piper « Inconnu ».
-
-Les profils sont des **données biométriques** : `server/profiles/`, jamais versionné,
-un fichier JSON lisible par personne ; `make forget NAME=...` le supprime.
+> **Retirée sur la branche `fingerprint`** (étape F4b) : le doigt identifie la personne, plus la voix. Le code et son mode d'emploi sont dans la branche `main`.
 
 ### Étape 8 — diarisation : qui parle quand
 
-La parole trouvée par la VAD est découpée en tours de parole : `SPEAKER_00` de 0,0 à
-1,3 s, `SPEAKER_01` de 1,4 à 2,9 s... Les étiquettes ne valent que pour une session :
-mettre un nom sur une voix, c'est l'étape 9. Modèle `pyannote/speaker-diarization-community-1`
-(33 Mo), exécuté sur CPU, **télémétrie de pyannote coupée** (active par défaut en version 4).
-
-1. Compte sur <https://huggingface.co>, puis **accepter les conditions** sur
-   <https://huggingface.co/pyannote/speaker-diarization-community-1>.
-2. Jeton de type « Read » sur <https://huggingface.co/settings/tokens>, copié dans
-   `server/.env` : `HF_TOKEN=hf_...` (`cp server/.env.example server/.env` s'il n'existe pas).
-3. `make install-diarization` puis `make models`. Ensuite, plus aucun accès à Internet.
-4. `make diarize-demo` : votre voix, la voix Piper, votre voix → deux locuteurs attendus.
-5. `make run` : une session où deux personnes parlent à tour de rôle ; le journal affiche
-   `2 locuteur(s) : SPEAKER_00 0.00-1.30, SPEAKER_01 1.40-2.90`.
-
-Sur Raspberry Pi 4, trop lourd : `diarization.enabled: false` dans `config.yaml`.
+> **Retirée sur la branche `fingerprint`** (étape F4b) : personne n'est à départager : la session est celle d'un seul doigt. Le code et son mode d'emploi sont dans la branche `main`.
 
 ### Étape 7 — détection d'activité vocale (VAD)
 
-Le serveur ne transcrit plus que la parole : silences de début et de fin retirés,
-sessions sans parole (appui muet, clic) écartées sans appeler Whisper. Silero est
-livré avec faster-whisper : rien de plus à installer.
-
-1. `make vad-all` : une ligne par fenêtre de 32 ms (`#` parole, `_` silence) pour
-   chaque enregistrement, et le nombre de sessions sans parole.
-2. `make vad OUT=server/recordings/<fichier>.wav` puis `make play OUT=recordings/parole.wav` :
-   la parole seule, sans les silences.
-3. `make run` (à relancer : le code a changé), puis quelques questions et un appui
-   sans parler. Le journal affiche `parole 1.36 s sur 2.00 s (segments 0.49-1.85 s)`,
-   et pour l'appui muet `sans parole (VAD)`, avec une réponse immédiate.
-
-Réglages dans `config.yaml`, section `vad` : seuil, pause minimale, durée minimale de parole, marge.
+> **Retirée sur la branche `fingerprint`** (étape F4b) : le doigt borne la session ; un silence complet est écarté par `stt.min_rms_dbfs`. Le code et son mode d'emploi sont dans la branche `main`.
 
 ### Étape 6 — MVP : l'assistant répond
 

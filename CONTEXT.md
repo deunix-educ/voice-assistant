@@ -49,7 +49,7 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F2 | Enregistrer / lister / supprimer les doigts, `finger_id → nom` dans config.yaml | **fait** (`19c935c`) | **oui (2026-10-18)** |
 | F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (`0c7fae1`) | **oui (2026-10-18)** |
 | F4 | Serveur : droits par doigt, confirmation par le même doigt, pipeline sans VAD / diarisation / voix | **fait** | **oui (2026-10-18)** |
-| F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | à faire | — |
+| F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | **fait** | **oui (2026-10-18)** |
 | F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | à faire | — |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
@@ -61,6 +61,10 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 ---
 
 ## 3. Décisions techniques figées
+
+> **Branche `fingerprint`** : les décisions sur la VAD (Silero), la diarisation (pyannote), l'identification vocale
+> (profils, seuils, enrôlement), l'attribution « qui a dit quoi », le mot de réveil (openWakeWord), l'écoute continue et
+> les droits fondés sur un score de voix ne s'appliquent plus : ce code a été supprimé en F4b et reste dans la branche `main`.
 
 | Sujet | Décision | Raison |
 |---|---|---|
@@ -205,19 +209,10 @@ server/voice_server/assistant.py   Assistant à règles (heure, date…)        
 server/voice_server/voice_pipeline.py  VoicePipeline : STT → réponse → TTS → envoi [étape 6]
 tools/download_models.py           make models                                  [étape 6]
 tools/speech_check.py              make speech-check / make transcribe          [étapes 6-7]
-server/voice_server/voice_activity.py  VoiceActivityDetector (Silero), find_segments [étape 7]
-tools/vad_check.py                 make vad / make vad-all                      [étape 7]
-server/voice_server/diarization.py Diarizer (pyannote), SpeakerTurn, timeline   [étape 8]
-tools/diarize_check.py             make diarize / make diarize-demo             [étapes 8-10]
-server/voice_server/speaker_identifier.py  SpeakerIdentifier, profils, cosinus  [étape 9]
-server/voice_server/speaker_attribution.py  attribute, Utterance, transcript_json [étape 10]
 server/voice_server/home_control.py  parse_intent, decide, HomeController       [étape 11]
 server/voice_server/text_normalize.py  normalize (commun)                       [étape 11]
 firmware/src/DemoDevices.*         LED GPIO 21 + volets/porte simulés           [étape 11]
-server/voice_server/wake_word.py   WakeWordDetector (openWakeWord ONNX)         [étape 13]
-server/voice_server/hands_free.py  HandsFreeListener : veille / commande / réponse [étape 13]
 server/voice_server/access_control.py  AccessPolicy : niveaux, refus, confirmation [étape 14]
-tools/enroll.py                    make enroll / profiles / forget              [étape 9]
 tools/latency_check.py             make latency : avant/après sur enregistrements réels [étape 16]
 tools/say.py                       make say : phrase Piper en WAV + MP3 (téléphone) [étape 14]
 docs/MOSQUITTO.md                  broker : installation, pièges, vérification  [étape 3]
@@ -264,10 +259,9 @@ TLS (option de l'étape 15, non activée).
 
 ### État au 2026-10-18 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1, F2 et F3 validées**, **F4 validée (serveur)**. Commits : `67bd4a4` (F1),
-  `19c935c` (F2) ; `0c7fae1` (F3), puis F4 (commit suivant). Reste : F4b (suppression du
-  code inutile) puis F5 (ESP32-S3 Mini).
-- `make test` : 320 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
+- Branche `fingerprint` : **F1, F2 et F3 validées**, **F4 et F4b validées**. Commits : `67bd4a4` (F1),
+  `19c935c` (F2) ; `0c7fae1` (F3), `6e432be` (F4), puis F4b (commit suivant). Reste : F5 (ESP32-S3 Mini) : la référence exacte de la carte est à demander à l'utilisateur.
+- `make test` : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
 - Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt
   garde `10.42.0.1`) ; `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil).
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
@@ -1006,3 +1000,21 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   `vad`/`diarization`/`speaker`/`wake` de config.yaml et leurs outils/tests/extras, côté firmware l'écoute continue.
 - **2026-10-18** — **F4 validée** par l'utilisateur, avec la règle « doigt exact » pour la confirmation (corrigée avant
   validation). F3 (`0c7fae1`) et F4 commitées à sa demande, en deux commits.
+- **2026-10-18** — F3 (`0c7fae1`) et F4 (`6e432be`) commitées à la demande de l'utilisateur, avec la règle « doigt exact » pour la
+  confirmation d'une action sensible. **F4b écrite** (suppression, branche `fingerprint`). Serveur : modules `voice_activity`,
+  `diarization`, `speaker_identifier`, `speaker_attribution`, `wake_word`, `hands_free` et leurs 5 fichiers de tests ; sections
+  `vad`, `diarization`, `speaker`, `wake` de config.yaml et leurs dataclasses ; `Transcript.words` / `Word` / `word_timestamps` ;
+  extras `diarization` et `wakeword` de pyproject.toml ; `HF_TOKEN` de `.env.example` ; `__main__.py` ne branche plus d'écoute
+  mains libres. Outils : `vad_check`, `diarize_check`, `enroll` supprimés ; `speech_check` sans VAD ; `say` sans mot de réveil ;
+  `download_models` = Whisper + Piper seulement ; `latency_check` réécrit (temps de Whisper sur la session entière, sessions
+  silencieuses comptées à part). Makefile : cibles `install-diarization`, `install-wakeword`, `vad`, `vad-all`, `diarize`,
+  `diarize-demo`, `enroll`, `profiles`, `forget` et variables `WAKE*` supprimées. Broker : droit d'écriture `audio/stream`
+  retiré de `mosquitto/acl`. Firmware : commandes `listen` et `capture`, flux `audio/stream`, LED d'écoute continue et
+  `updateStreaming` supprimés ; `CommandHandler` n'a plus de rappels de mode ; la LED au repos clignote lentement ;
+  l'absence du serveur est seulement journalisée. README FR/EN : architecture, installation, utilisation, étapes 7 à 10 et 13
+  réduites à une note « retirée, voir `main` ». 272 tests (320 avant : ceux des modules supprimés ont disparu), pyright 0 erreur,
+  `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %). **Non touché volontairement** : `server/profiles/` (profils vocaux de
+  l'utilisateur, données biométriques ignorées par git), `server/models/pyannote`, `silero`, `openwakeword` (plusieurs Go
+  inutilisés, à supprimer par l'utilisateur), `server/.env` (HF_TOKEN reste, inutile).
+- **2026-10-18** — **F4b validée** par l'utilisateur et commitée à sa demande. Prochaine étape : F5 (ESP32-S3 Mini) ; avant
+  de l'écrire, demander la référence exacte de la carte (brochage, USB natif ou pont série, PSRAM) : le brochage des deux cartes diffère.
