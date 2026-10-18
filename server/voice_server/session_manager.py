@@ -18,6 +18,13 @@ from voice_server.settings import AudioSettings, SessionSettings
 
 logger = logging.getLogger(__name__)
 
+DENIED_REASONS = {
+    "unknown": "empreinte inconnue du capteur (make finger-enroll)",
+    "image": "image du doigt inutilisable (doigt propre, pose franche)",
+    "lifted": "doigt retire avant la fin de l'identification",
+    "sensor": "capteur d'empreinte en defaut",
+}
+
 
 class Outcome(Enum):
     """Façon dont une session s'est terminée."""
@@ -26,6 +33,11 @@ class Outcome(Enum):
     LOST_CHUNKS = "lost_chunks"  # END reçu, mais des chunks manquent (QoS 0 : perte réseau)
     TIMEOUT = "timeout"          # jamais de END : l'ESP32 a disparu en cours de session
     INTERRUPTED = "interrupted"  # un nouveau START est arrivé avant le END
+
+
+def _as_int(value: object) -> int | None:
+    """Un entier du JSON (pas un booléen, pas un texte), sinon None."""
+    return value if isinstance(value, int) and not isinstance(value, bool) else None
 
 
 @dataclass(frozen=True)
@@ -40,6 +52,8 @@ class SessionResult:
     chunks_received: int
     chunks_announced: int | None  # None si aucun END n'a été reçu
     levels: Levels
+    finger_id: int | None = None     # emplacement du doigt reconnu qui a ouvert la session (F3) ; None : bouton
+    finger_score: int | None = None  # score de reconnaissance du capteur d'empreinte
 
 
 @dataclass
@@ -53,6 +67,8 @@ class _Session:
     last_activity: float
     chunks_received: int = 0
     announced: int | None = None           # nombre de chunks annoncé par le END
+    finger_id: int | None = None
+    finger_score: int | None = None
     end_seen_at: float | None = None
     end_report: dict[str, Any] = field(default_factory=dict[str, Any])
 
@@ -76,13 +92,16 @@ class SessionManager:
         recordings_dir: Path,
         clock: Callable[[], float] = time.monotonic,
         on_finished: Callable[[SessionResult], None] | None = None,
+        describe_finger: Callable[[int], str] | None = None,
     ) -> None:
         """
         Args:
             on_finished: appelé pour chaque session terminée, depuis le fil qui la
                 termine (réseau ou principal) : il doit rendre la main aussitôt.
+            describe_finger: « Denis (empreinte 2) » pour un emplacement du capteur, pour le journal.
         """
         self._on_finished = on_finished
+        self._describe_finger = describe_finger or (lambda finger_id: f"empreinte {finger_id}")
         self._audio = audio
         self._settings = sessions
         self._recordings_dir = recordings_dir
@@ -118,6 +137,10 @@ class SessionManager:
             log = logger.info if event.get("ok") else logger.warning
             log("%s : commande %s %s %s, etat %s", device, event.get("device"), event.get("action"),
                 "executee" if event.get("ok") else "REFUSEE", event.get("state"))
+        elif kind == "fp_denied":
+            # F3 : un doigt posé n'a pas ouvert de session ; la carte clignote en rouge.
+            reason = str(event.get("reason", ""))
+            logger.warning("%s : doigt refuse, %s", device, DENIED_REASONS.get(reason, reason))
         elif kind == "played":
             # Étape 12 : « underruns » compte les réamorçages (réserve épuisée, pause propre) ;
             # la marge minimale dit combien de retard réseau restait absorbable.
@@ -178,14 +201,20 @@ class SessionManager:
             return results
 
         session_id = str(event.get("session", "inconnue"))
+        finger_id = _as_int(event.get("finger"))
         self._active[device] = _Session(
             device=device,
             session_id=session_id,
             buffer=AudioBuffer(self._audio, self._settings.max_seconds),
             started_at=datetime.now(),
             last_activity=self._clock(),
+            finger_id=finger_id,
+            finger_score=_as_int(event.get("score")) if finger_id is not None else None,
         )
-        logger.info("%s : session %s ouverte", device, session_id)
+        if finger_id is None:
+            logger.info("%s : session %s ouverte (bouton)", device, session_id)
+        else:
+            logger.info("%s : session %s ouverte par %s", device, session_id, self._describe_finger(finger_id))
         return results
 
     def _end(self, device: str, event: dict[str, Any]) -> list[SessionResult]:
@@ -224,6 +253,8 @@ class SessionManager:
             chunks_received=session.chunks_received,
             chunks_announced=session.announced,
             levels=session.buffer.levels(),
+            finger_id=session.finger_id,
+            finger_score=session.finger_score,
         )
         self._log(result, session)
         if self._on_finished is not None:

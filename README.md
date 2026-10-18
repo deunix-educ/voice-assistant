@@ -320,6 +320,27 @@ L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)*
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées**.
 
+### Branche `fingerprint` — étape F3 : le doigt ouvre la session
+
+Plus de mot de réveil : on **pose un doigt enregistré sur le capteur, on parle, on le lève**. L'anneau dit où
+l'on en est ; le bouton PTT reste utilisable (session sans identité).
+
+| Anneau | Sens |
+|---|---|
+| violet fixe | doigt vu, identification en cours (quelques centaines de ms) : parlez déjà, le son est gardé |
+| bleu fixe | doigt reconnu, la carte vous écoute |
+| éteint | doigt levé, la session est partie au serveur |
+| 3 éclairs rouges | doigt refusé : inconnu du capteur, image inutilisable ou capteur en défaut |
+
+1. `make fw-upload`, puis `make run` sur le PC (`wake.enabled: false` dans `config.yaml`, déjà fait sur cette branche).
+2. Posez un doigt enregistré, parlez, levez-le. Côté carte : `doigt reconnu, emplacement 2 (score …)`, puis
+   `session … terminee (doigt retire)`. Côté serveur : `session … ouverte par Denis (empreinte 2)`.
+3. Posez un doigt inconnu : éclairs rouges, `fp_denied` dans le journal du serveur. Il faut le lever avant un nouvel essai.
+
+Un doigt déjà posé au démarrage, ou posé pendant une session du bouton, ne déclenche rien tant qu'il n'a pas quitté
+le capteur. Les durées (effleurement 40 ms, retrait 150 ms, identification 3 s) sont dans `firmware/include/config.h`
+(`FP_*`). Les droits par doigt viennent à l'étape F4 : pour l'instant, la voix identifie encore le locuteur.
+
 ### Branche `fingerprint` — étape F2 : enregistrer les doigts
 
 Le capteur garde les empreintes (200 emplacements) ; `config.yaml` dit à qui elles appartiennent.
@@ -352,7 +373,7 @@ tient le boîtier. Câblage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 
 1. `make fw-upload`, puis `make fw-monitor` (ou minicom à 921600 bauds), carte redémarrée.
 2. Lignes attendues : `# empreinte : poignee de main : ok`, la capacité (200 pour un R503) et
    `0 empreinte(s) enregistree(s)`, puis l'anneau passe par le rouge, le bleu et le violet.
-3. Posez un doigt : `# empreinte : doigt POSE`, anneau violet ; retirez-le : `doigt retire`.
+3. Posez un doigt : `# empreinte : doigt POSE`, anneau violet ; retirez-le : `doigt retire`. (Depuis F3, un doigt enregistré ouvre aussi une session : voir plus haut.)
 
 | Message | Cause probable |
 |---|---|

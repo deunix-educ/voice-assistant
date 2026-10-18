@@ -40,6 +40,17 @@ Prompt de référence : `prompt-assistant-vocal-esp32.md` (rôle, style, feuille
 
 **Règle absolue** : ne jamais démarrer l'étape N+1 avant validation explicite de l'étape N.
 
+**Branche `fingerprint`** (variante simplifiée, sans VAD / diarisation / identification vocale / mot de réveil ;
+capteur R503 + bouton conservé) — mêmes règles de validation :
+
+| # | Étape | État | Validé par l'utilisateur |
+|---|---|---|---|
+| F1 | Capteur R503 seul sur la WROOM (poignée de main, réglages, anneau, touche) | **fait** (`67bd4a4`) | **oui (2026-10-18)** |
+| F2 | Enregistrer / lister / supprimer les doigts, `finger_id → nom` dans config.yaml | **fait** (`19c935c`) | **oui (2026-10-18)** |
+| F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (non commitée) | **oui (2026-10-18)** |
+| F4 | Serveur : droits par `finger_id`, confirmation par le même doigt, retrait VAD / diarisation / voix | à faire | — |
+| F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | à faire | — |
+
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
 un agent MQTT par machine (liste blanche d'actions définie sur la machine), Wake-on-LAN par le
@@ -225,6 +236,15 @@ agent/voice_agent.py               agent Linux autonome (liste blanche, dry_run)
 agent/agent.yaml.example           modèle de /etc/voice-assistant/agent.yaml         [étape 15b]
 agent/voice-agent.service, agent/Makefile  service systemd, make -C agent install [étape 15b]
 server/tests/test_machine_control.py, test_voice_agent.py                      [étape 15b]
+firmware/src/FingerprintPacket.h   paquets EF01 du R503, décodeur, table d'index [F1-F2, sans Arduino]
+firmware/src/FingerprintPort.h     interface « capteur » (testable avec un faux)   [F2]
+firmware/src/FingerprintSensor.*   UART2 vers le R503, anneau, touche, recherche   [F1-F2]
+firmware/src/FingerprintEnrollment.h  enregistrement d'un doigt (automate)         [F2, sans Arduino]
+firmware/src/FingerprintTrigger.h  doigt posé / reconnu / levé = session de parole [F3, sans Arduino]
+server/voice_server/fingerprint_book.py  emplacement du capteur → nom (config.yaml) [F2]
+tools/finger.py                    make finger-list|enroll|delete, par MQTT        [F2]
+server/tests/test_fingerprint_packet.py, test_fingerprint_enrollment.py, test_fingerprint_trigger.py,
+    test_finger_tool.py            compilent les en-têtes du firmware avec g++      [F1-F3]
 server/                            squelette Python (modules à partir de l'étape 3)
 Makefile                           toutes les opérations système
 ```
@@ -240,6 +260,15 @@ TLS (option de l'étape 15, non activée).
 2. `make help` liste toutes les cibles.
 3. Vérifier l'étape en cours dans le tableau du §2, et **ne rien faire au-delà**.
 4. Contrôle rapide de l'environnement : `make test` (220 tests), `make lint`, `make fw-check`.
+
+### État au 2026-10-18 (branche `fingerprint`)
+
+- Branche `fingerprint` : **F1, F2 et F3 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2) ; F3 non commitée
+  tant que l'utilisateur ne l'a pas demandé.
+- `make test` : 310 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
+- Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt
+  garde `10.42.0.1`) ; `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil).
+- Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
 
 ### État au 2026-10-06 au soir (fin de session)
 
@@ -935,3 +964,23 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
 - **2026-10-18** — F2 essayée par l'utilisateur sur la carte : enregistrement réel réussi, refus d'un doigt
   déjà enregistré **OK**, refus de deux doigts différents **OK**, liste et décodage de la table d'index
   confirmés. Commitée à sa demande. Validation explicite de F2 (avant F3) : à confirmer.
+- **2026-10-18** — **F2 validée** par l'utilisateur (« F2 validé »). **F3 écrite** (branche `fingerprint`).
+  Firmware : `FingerprintTrigger.h` (automate sans Arduino) — doigt posé depuis 40 ms → `Touched` (le micro démarre
+  aussitôt) → capture, extraction, recherche (3 captures inutilisables tolérées, 3 s au plus) → `Recognized`
+  (emplacement, score) ou `Rejected` (`unknown`, `image`, `lifted`, `sensor`) ; levé depuis 150 ms → `Released`.
+  Anneau : violet fixe pendant l'identification, bleu fixe pendant la session, éteint au retrait, 3 éclairs rouges
+  si refusé. Un doigt déjà posé au démarrage, pendant une session du bouton ou après un enregistrement ne
+  déclenche rien : il doit d'abord quitter le capteur (`requireLift`). Un doigt refusé laissé posé ne relance
+  pas l'identification. `main.cpp` : `onFingerEvent`, `fingerSession` (la session ouverte par le doigt est
+  fermée par son retrait, garde-fou 15 s), `beginCapture`/`discardCapture` ; le bouton reste utilisable (session
+  sans doigt) mais un appui pendant qu'un doigt tient le micro est perdu. `VoiceSession::start` ajoute
+  `"finger":N,"score":S` au START. Sans MQTT, un doigt n'ouvre pas de session (la liaison série ne porte pas
+  l'identité). Serveur : `SessionResult.finger_id/finger_score` (None pour le bouton), journal « session X ouverte
+  par Denis (empreinte 2) », événement `fp_denied` journalisé avec son motif ; `wake.enabled: false` dans
+  config.yaml. **Rien n'utilise encore le doigt pour les droits** (F4) : la voix identifie toujours le locuteur.
+  Tests : 24 pour l'automate (g++, instants exacts), 5 pour le serveur ; 310 au total, pyright 0 erreur,
+  `make fw-check` SUCCESS. **Non vérifié sur la carte** : durée réelle de l'identification (le son capté
+  avant `Recognized` tient dans la FIFO de 1 s), fiabilité du signal de touche en tenant le doigt 5-10 s,
+  micro-décollements, bruit du capteur sur le micro.
+- **2026-10-18** — **F3 validée** par l'utilisateur (« Ensemble des tests passés => OK. F3 validé »). Mesures de durée
+  d'identification et de bruit non rapportées ; l'utilisateur n'a signalé aucun défaut.

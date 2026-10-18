@@ -13,6 +13,7 @@
 Étape 15 : présence + testament (les cartes coupent leur micro si le serveur meurt), journal fichier.
 Étape 16 : latence : empreinte directe pour une parole courte, cache de synthèse, envois sans attente.
 Étape 15b : machines Linux : « éteins le PC du bureau » → agent/pc-bureau/command ; « allume » → Wake-on-LAN.
+Branche fingerprint, F3 : un doigt reconnu par le capteur R503 ouvre la session (la carte l'annonce dans START).
 """
 
 from __future__ import annotations
@@ -32,6 +33,7 @@ from typing import TYPE_CHECKING
 
 from voice_server.audio_resampler import AudioResampler
 from voice_server.audio_sender import AudioSender
+from voice_server.fingerprint_book import FingerprintBook
 from voice_server.mqtt_link import MqttLink
 from voice_server.session_manager import Outcome, SessionManager, SessionResult
 from voice_server.settings import Settings, load_settings
@@ -201,7 +203,7 @@ def main(argv: list[str]) -> int:
         except FileNotFoundError as error:
             logger.error("%s (ou diarization.enabled: false dans config.yaml)", error)
             return 1
-        logger.info("mode assistant : appuyez sur le bouton et posez une question")
+        logger.info("mode assistant : posez un doigt enregistre (ou appuyez sur le bouton) et parlez")
 
     jobs: "queue.Queue[SessionResult | None]" = queue.Queue()
 
@@ -210,7 +212,8 @@ def main(argv: list[str]) -> int:
             jobs.put(result)  # rend la main aussitôt : le traitement dure des secondes
 
     sessions = SessionManager(settings.audio, settings.sessions, settings.recordings_dir,
-                              on_finished=on_finished)
+                              on_finished=on_finished,
+                              describe_finger=FingerprintBook(settings.fingerprint).describe)
     listener = None
     if settings.wake.enabled and not args.echo:
         try:

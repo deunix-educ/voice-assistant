@@ -9,6 +9,8 @@
  * Réseau (étape 3) : Wi-Fi + MQTT ; état retenu sur voice/<id>/state, testament « offline ».
  * Fiabilisation (étape 15) : compte MQTT, chien de garde des tâches, micro coupé quand
  *                            le serveur annonce son absence (voice/server/status).
+ * Empreinte (branche fingerprint, F1 à F3) : capteur R503 ; un doigt reconnu ouvre la session
+ *                            de parole comme le bouton, et la ferme quand il est levé.
  *
  * Les deux chemins sont indépendants : un micro en panne n'empêche pas la
  * lecture, et inversement. Aucune allocation dynamique dans les chemins audio.
@@ -27,6 +29,7 @@
 #include "DemoDevices.h"
 #include "FingerprintEnrollment.h"
 #include "FingerprintSensor.h"
+#include "FingerprintTrigger.h"
 #include "MicCapture.h"
 #include "MicSelfTest.h"
 #include "MqttLink.h"
@@ -67,9 +70,21 @@ AudioFifo playbackFifo;  ///< PC -> tâche audio -> ampli
 AudioFifo captureFifo;   ///< micro -> tâche de capture -> loop() -> réseau
 PushButton button(PIN_BUTTON_PTT, BUTTON_DEBOUNCE_MS);
 FingerprintSensor fingerprint(Serial2, PIN_FP_RX, PIN_FP_TX, PIN_FP_TOUCH);  ///< capteur R503 (branche fingerprint)
-bool fingerprintWasTouched = false;
 void onEnrollmentStep(FingerprintEnrollment::Step step, uint16_t id, const char* reason);
 FingerprintEnrollment enrollment(fingerprint, onEnrollmentStep, FP_ENROLL_TIMEOUT_MS);
+void onFingerEvent(FingerprintTrigger::Event event, uint16_t id, uint16_t score, const char* reason);
+
+/// Durées du déclencheur « doigt » (config.h).
+FingerprintTrigger::Timing fingerTiming() {
+    FingerprintTrigger::Timing timing;
+    timing.settleMs = FP_TOUCH_SETTLE_MS;
+    timing.releaseMs = FP_RELEASE_MS;
+    timing.identifyMs = FP_IDENTIFY_TIMEOUT_MS;
+    timing.pollMs = FP_POLL_MS;
+    timing.attempts = FP_IDENTIFY_ATTEMPTS;
+    return timing;
+}
+FingerprintTrigger fingerTrigger(fingerprint, onFingerEvent, fingerTiming());
 StatusLed led(PIN_STATUS_LED);
 DemoDevices devices(PIN_DEMO_LIGHT);
 SerialFramer framer(Serial);
@@ -91,6 +106,7 @@ constexpr uint32_t SESSION_MAX_MS = 15000;
 VoiceSession session(mqtt, framer);
 uint32_t captureOverrunsAtStart = 0;
 bool micReady = false;
+bool fingerSession = false;      ///< la session en cours a été ouverte par un doigt (F3) : il la ferme
 
 // Écoute continue (étape 13), pilotée par le serveur. loop() seulement.
 bool listenWanted = false;       ///< le serveur demande le flux continu
@@ -325,8 +341,8 @@ void onCapture(bool active) {
     wakeCaptureSinceMs = millis();
 }
 
-/// Arrête le flux continu et jette ce qui restait : rien ne sort du micro sans raison.
-void stopStreaming() {
+/// Arrête la capture et jette ce qui restait : rien ne sort du micro sans raison.
+void discardCapture() {
     captureWanted.store(false);
     const uint32_t waitStart = millis();
     while (captureRunning.load() && (millis() - waitStart) < 200) {
@@ -334,6 +350,11 @@ void stopStreaming() {
     }
     while (captureFifo.read(outgoingChunk, sizeof(outgoingChunk), 0) > 0) {
     }
+}
+
+/// Arrête le flux continu (étape 13).
+void stopStreaming() {
+    discardCapture();
     streaming = false;
 }
 
@@ -377,17 +398,28 @@ void updateIdleLed() {
     }
 }
 
-/// Ouvre une session de parole : MQTT si possible, liaison série sinon.
-void startSession() {
+/// Lance la capture du micro. Sans effet si elle tourne déjà (le doigt la lance dès la pose).
+void beginCapture() {
+    if (captureWanted.load()) {
+        return;
+    }
+    captureOverrunsAtStart = captureFifo.overruns();
+    captureWanted.store(true);
+}
+
+/**
+ * Ouvre une session de parole : MQTT si possible, liaison série sinon.
+ * @param fingerId Emplacement du doigt reconnu qui l'ouvre (F3) ; -1 pour le bouton.
+ */
+void startSession(int fingerId = -1, uint16_t fingerScore = 0) {
     const bool viaMqtt = mqtt.connected();
     if (!viaMqtt) {
         Serial.println("# session : MQTT non connecte, envoi par la liaison serie (make record)");
     }
 
-    captureOverrunsAtStart = captureFifo.overruns();
+    beginCapture();
     session.start(viaMqtt ? VoiceSession::Transport::Mqtt : VoiceSession::Transport::Serial,
-                  mic.sampleRate());
-    captureWanted.store(true);
+                  mic.sampleRate(), fingerId, fingerScore);
     led.on();
 }
 
@@ -504,7 +536,8 @@ void probeFingerprint() {
         delay(350);
     }
     fingerprint.setAura(FingerprintSensor::Aura::Off, FingerprintSensor::Color::Blue, 0, 0);
-    Serial.println("# empreinte : posez un doigt : l'anneau doit passer au violet et le journal l'indiquer");
+    Serial.println("# empreinte : posez un doigt enregistre et parlez : anneau violet (identification) puis bleu "
+                   "(j'ecoute) ; levez le doigt pour finir");
 }
 
 /**
@@ -603,30 +636,88 @@ void onFingerprintCommand(const char* command, int id, bool all) {
     } else if (strcmp(command, "fp_enroll") == 0) {
         if (id < 0 || id >= fingerprint.capacity()) {
             publishEnrollmentRefused(id, "bad_id");
-        } else if (!enrollment.begin(static_cast<uint16_t>(id), millis())) {
+        } else if (fingerTrigger.busy() || !enrollment.begin(static_cast<uint16_t>(id), millis())) {
             publishEnrollmentRefused(id, "busy");
         }
     }
 }
 
-/// Étape F1 : le signal de touche allume l'anneau et s'affiche dans le moniteur.
+/**
+ * @brief Étape F3 : ce que fait la carte à chaque étape du déclencheur « doigt ».
+ *
+ * Posé : le micro démarre aussitôt (le début de la phrase n'attend pas l'identification).
+ * Reconnu : la session s'ouvre, avec l'emplacement du doigt dans son START.
+ * Refusé : le son est jeté, voice/<id>/event reçoit {"event":"fp_denied","reason":"unknown"}.
+ * Levé : la session se ferme.
+ */
+void onFingerEvent(FingerprintTrigger::Event event, uint16_t id, uint16_t score, const char* reason) {
+    using Event = FingerprintTrigger::Event;
+    switch (event) {
+    case Event::Touched:
+        Serial.println("# empreinte : doigt pose, identification...");
+        if (session.active()) {
+            break;  // le bouton a ouvert une session entre-temps : il garde le micro
+        }
+        if (streaming) {
+            stopStreaming();  // comme le bouton : le doigt reprend la main sur le micro
+        }
+        beginCapture();
+        led.on();
+        break;
+    case Event::Recognized:
+        Serial.printf("# empreinte : doigt reconnu, emplacement %u (score %u)\n", id, score);
+        if (session.active()) {
+            break;
+        }
+        if (!mqtt.connected()) {
+            // Sans broker, ni le serveur ni l'identité ne peuvent suivre : la liaison série ne porte pas le doigt.
+            Serial.println("# empreinte : MQTT non connecte, session refusee");
+            discardCapture();
+            led.blink(1000);
+            break;
+        }
+        startSession(id, score);
+        fingerSession = true;
+        break;
+    case Event::Rejected: {
+        Serial.printf("# empreinte : doigt refuse (%s)\n", reason);
+        if (!session.active()) {
+            discardCapture();
+            led.blink(1000);
+        }
+        char payload[64];
+        snprintf(payload, sizeof(payload), "{\"event\":\"fp_denied\",\"reason\":\"%s\"}", reason);
+        mqtt.publish("event", payload, false);
+        break;
+    }
+    case Event::Released:
+        Serial.println("# empreinte : doigt retire");
+        if (fingerSession && session.active()) {
+            stopSession("doigt retire");
+            led.blink(1000);
+        }
+        fingerSession = false;
+        break;
+    }
+}
+
+/**
+ * @brief Étapes F1 à F3 : l'enregistrement d'un doigt, sinon le déclencheur de session.
+ *
+ * Un doigt ne peut ouvrir une session que si le micro est libre (ni bouton, ni session) et le
+ * broker joignable. Le doigt qui a servi à l'enregistrement ne doit pas en ouvrir une en partant.
+ */
 void updateFingerprint() {
     if (!fingerprint.present()) {
         return;
     }
     if (enrollment.busy()) {
         enrollment.update(millis());
-        fingerprintWasTouched = fingerprint.touched();  // l'anneau est piloté par l'enregistrement
+        fingerTrigger.requireLift();
         return;
     }
-    const bool touched = fingerprint.touched();
-    if (touched == fingerprintWasTouched) {
-        return;
-    }
-    fingerprintWasTouched = touched;
-    Serial.printf("# empreinte : doigt %s\n", touched ? "POSE" : "retire");
-    fingerprint.setAura(touched ? FingerprintSensor::Aura::On : FingerprintSensor::Aura::Off,
-                        FingerprintSensor::Color::Purple, 0, 0);
+    const bool canStart = micReady && mqtt.connected() && !session.active();
+    fingerTrigger.update(millis(), canStart);
 }
 
 }  // namespace
@@ -763,6 +854,9 @@ void loop() {
     }
 
     button.update();
+    if (fingerTrigger.busy()) {
+        button.clearEvents();  // un doigt tient le micro (F3) : un appui à ce moment-là est perdu
+    }
 
     if (!session.active()) {
         if (button.wasPressed()) {
@@ -771,7 +865,7 @@ void loop() {
                 stopStreaming();  // le bouton reprend la main sur le micro
             }
             startSession();
-        } else {
+        } else if (!fingerTrigger.busy()) {
             updateStreaming();
             updateIdleLed();
         }
@@ -782,7 +876,14 @@ void loop() {
     // --- Session en cours : la capture tourne dans sa tâche ; ici on envoie.
     drainCapture(false);
 
-    if (button.wasReleased() || !button.isDown()) {
+    if (fingerSession) {
+        // La fin normale vient du doigt (onFingerEvent) ; ici seulement le garde-fou.
+        if (session.elapsedMs() > SESSION_MAX_MS) {
+            stopSession("duree maximale");
+            fingerSession = false;
+            led.blink(1000);
+        }
+    } else if (button.wasReleased() || !button.isDown()) {
         stopSession("bouton relache");
         button.clearEvents();  // un appui mémorisé pendant la session ne doit pas en relancer une
         led.blink(1000);

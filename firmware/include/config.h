@@ -275,6 +275,24 @@ static constexpr uint32_t FP_BAUD = 57600;
 /// Enregistrement d'une empreinte (F2) : attente maximale à chaque pose du doigt, ou du retrait (ms).
 static constexpr uint32_t FP_ENROLL_TIMEOUT_MS = 20000;
 
+/// Session déclenchée par le doigt (F3) : posé = début, levé = fin.
+/// Doigt posé depuis ce délai : sinon c'est un effleurement, ignoré.
+static constexpr uint32_t FP_TOUCH_SETTLE_MS = 40;
+
+/// Doigt levé depuis ce délai : la session se termine. Un décollement plus court (doigt qui glisse,
+/// signal de touche qui saute) n'est pas un retrait. Ces 150 ms s'ajoutent à la fin de l'audio envoyé.
+static constexpr uint32_t FP_RELEASE_MS = 150;
+
+/// Délai total pour identifier le doigt, de la pose à la réponse du capteur. Le son est capté pendant ce
+/// temps (CAPTURE_FIFO_BYTES = 1 s) ; au-delà d'une seconde, le début de la phrase serait perdu.
+static constexpr uint32_t FP_IDENTIFY_TIMEOUT_MS = 3000;
+
+/// Entre deux dialogues avec le capteur pendant l'identification (ms).
+static constexpr uint32_t FP_POLL_MS = 40;
+
+/// Captures inutilisables (image brouillée, trop peu de détails) tolérées avant de refuser le doigt.
+static constexpr uint8_t FP_IDENTIFY_ATTEMPTS = 3;
+
 /// Mot de passe du capteur : 0 à la sortie d'usine.
 static constexpr uint32_t FP_PASSWORD = 0;
 

@@ -32,10 +32,13 @@ public:
 
     /**
      * @brief Ouvre une session et annonce son format.
-     * @param transport  MQTT ou liaison série.
-     * @param sampleRate Fréquence réellement en service.
+     * @param transport   MQTT ou liaison série.
+     * @param sampleRate  Fréquence réellement en service.
+     * @param fingerId    Emplacement de l'empreinte qui a ouvert la session (F3), -1 pour le bouton.
+     *                    Annoncé dans le START : {"finger":2,"score":123}. Sans effet par la liaison série.
+     * @param fingerScore Score de la reconnaissance, par le capteur.
      */
-    void start(Transport transport, uint32_t sampleRate);
+    void start(Transport transport, uint32_t sampleRate, int fingerId = -1, uint16_t fingerScore = 0);
 
     /**
      * @brief Envoie un chunk de PCM. Peut bloquer (Wi-Fi) : appeler depuis loop().

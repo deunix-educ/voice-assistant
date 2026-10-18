@@ -6,7 +6,7 @@
 
 VoiceSession::VoiceSession(MqttLink& mqtt, SerialFramer& framer) : _mqtt(mqtt), _framer(framer) {}
 
-void VoiceSession::start(Transport transport, uint32_t sampleRate) {
+void VoiceSession::start(Transport transport, uint32_t sampleRate, int fingerId, uint16_t fingerScore) {
     _transport = transport;
     _active = true;
     _chunks = 0;
@@ -23,12 +23,18 @@ void VoiceSession::start(Transport transport, uint32_t sampleRate) {
         return;
     }
 
+    // Ouverte par un doigt reconnu : le serveur sait qui tient la carte (droits, étape F4).
+    char finger[40] = "";
+    if (fingerId >= 0) {
+        snprintf(finger, sizeof(finger), ",\"finger\":%d,\"score\":%u", fingerId,
+                 static_cast<unsigned>(fingerScore));
+    }
     char payload[192];
     snprintf(payload, sizeof(payload),
              "{\"event\":\"start\",\"session\":\"%s\",\"rate\":%lu,\"bits\":16,\"channels\":1,"
-             "\"codec\":\"pcm_s16le\",\"chunk_ms\":%lu}",
+             "\"codec\":\"pcm_s16le\",\"chunk_ms\":%lu%s}",
              _id, static_cast<unsigned long>(sampleRate),
-             static_cast<unsigned long>(AUDIO_CHUNK_MS));
+             static_cast<unsigned long>(AUDIO_CHUNK_MS), finger);
     _mqtt.publish("event", payload, false);
 }
 

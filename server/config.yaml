@@ -100,7 +100,7 @@ home:
 # sur disque avant le mot : seules les dernières preroll_ms restent en mémoire.
 # Prononciation à l'anglaise : « Alexa », « Hé Maïcrofte », « Hey Djâr-viss ».
 wake:
-    enabled: true
+    enabled: false              # branche fingerprint (F3) : le doigt remplace le mot de réveil
     words: [alexa, hey_jarvis, hey_mycroft]   # models/openwakeword/<mot>_v0.1.onnx
     threshold: 0.5              # mesuré : 90 enregistrements sans le mot, score max 0,07
     # Seuil propre à un mot, si le journal montre des « mot presque reconnu » répétés.

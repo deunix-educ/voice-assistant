@@ -317,6 +317,27 @@ The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md
 
 Current step: **done — steps 1 to 16 are validated**.
 
+### `fingerprint` branch — step F3: the finger opens the session
+
+No more wake word: **put an enrolled finger on the sensor, speak, lift it**. The ring shows where you are; the
+PTT button still works (a session without identity).
+
+| Ring | Meaning |
+|---|---|
+| solid purple | finger seen, identification in progress (a few hundred ms): start talking, the sound is kept |
+| solid blue | finger recognized, the board is listening |
+| off | finger lifted, the session has gone to the server |
+| 3 red flashes | finger refused: unknown to the sensor, unusable image, or sensor fault |
+
+1. `make fw-upload`, then `make run` on the PC (`wake.enabled: false` in `config.yaml`, already set on this branch).
+2. Put an enrolled finger down, speak, lift it. Board side: `doigt reconnu, emplacement 2 (score …)`, then
+   `session … terminee (doigt retire)`. Server side: `session … ouverte par Denis (empreinte 2)`.
+3. Put an unknown finger down: red flashes, `fp_denied` in the server log. Lift it before trying again.
+
+A finger already on the sensor at power-up, or put down during a button session, triggers nothing until it has left
+the sensor. The timings (brush 40 ms, release 150 ms, identification 3 s) are in `firmware/include/config.h`
+(`FP_*`). Per-finger rights come in step F4: for now the voice still identifies the speaker.
+
 ### `fingerprint` branch — step F2: enrolling fingers
 
 The sensor stores the fingerprints (200 slots); `config.yaml` says who owns them. The voice server

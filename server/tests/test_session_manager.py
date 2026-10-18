@@ -188,3 +188,52 @@ def test_finished_sessions_are_notified(tmp_path: Path, clock: FakeClock) -> Non
     manager.on_event("esp32-01", end_event(1))
 
     assert finished == ["a1b2c3"]
+
+
+def finger_start_event(finger: object, score: object = 123, session: str = "a1b2c3") -> bytes:
+    event = json.loads(start_event(session))
+    event["finger"] = finger
+    event["score"] = score
+    return json.dumps(event).encode()
+
+
+def test_session_opened_by_a_finger_carries_its_id_and_score(manager: SessionManager) -> None:
+    """F3 : le START annonce l'emplacement du doigt reconnu ; il arrive jusqu'au résultat."""
+    manager.on_event("esp32-01", finger_start_event(2))
+    manager.on_audio("esp32-01", CHUNK)
+    result = manager.on_event("esp32-01", end_event(1))[0]
+
+    assert (result.finger_id, result.finger_score) == (2, 123)
+
+
+def test_session_opened_by_the_button_has_no_finger(manager: SessionManager) -> None:
+    manager.on_event("esp32-01", start_event())
+    manager.on_audio("esp32-01", CHUNK)
+    result = manager.on_event("esp32-01", end_event(1))[0]
+
+    assert (result.finger_id, result.finger_score) == (None, None)
+
+
+@pytest.mark.parametrize("finger", ["2", True, None, 2.5])
+def test_a_finger_that_is_not_an_integer_is_ignored(manager: SessionManager, finger: object) -> None:
+    """Un message mal formé ne donne jamais d'identité : la session reste celle d'un inconnu."""
+    manager.on_event("esp32-01", finger_start_event(finger))
+    manager.on_audio("esp32-01", CHUNK)
+
+    assert manager.on_event("esp32-01", end_event(1))[0].finger_id is None
+
+
+def test_finger_is_named_in_the_log(tmp_path: Path, clock: FakeClock, caplog: pytest.LogCaptureFixture) -> None:
+    manager = SessionManager(AUDIO, SESSIONS, tmp_path, clock=clock,
+                             describe_finger=lambda finger_id: f"Denis (empreinte {finger_id})")
+    with caplog.at_level("INFO"):
+        manager.on_event("esp32-01", finger_start_event(2))
+
+    assert "session a1b2c3 ouverte par Denis (empreinte 2)" in caplog.text
+
+
+def test_denied_finger_is_logged_with_its_reason(manager: SessionManager, caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("WARNING"):
+        manager.on_event("esp32-01", json.dumps({"event": "fp_denied", "reason": "unknown"}).encode())
+
+    assert "doigt refuse" in caplog.text and "inconnue" in caplog.text

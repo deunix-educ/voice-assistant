@@ -16,6 +16,7 @@ public:
     using Code = uint8_t;
     static constexpr Code OK = 0x00;
     static constexpr Code NO_FINGER = 0x02;
+    static constexpr Code IMAGE_FAIL = 0x03;           ///< capture ratée (doigt bougé) : on recommence
     static constexpr Code IMAGE_MESSY = 0x06;          ///< image trop brouillée
     static constexpr Code FEATURES_TOO_FEW = 0x07;     ///< pas assez de points caractéristiques
     static constexpr Code NO_MATCH = 0x08;
