@@ -875,3 +875,26 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   confirmation par le même doigt, retrait de la VAD / diarisation / identification vocale ;
   F5 carte ESP32-S3 Mini (deuxième environnement PlatformIO). Chaque étape attend sa validation.
   Rien d'écrit pour F1.
+- **2026-10-18** — **F1 écrite** (branche `fingerprint`, firmware seul ; le reste du firmware inchangé).
+  `FingerprintPacket.h` (paquets `EF01`, construction et décodeur octet par octet, sans Arduino),
+  `FingerprintSensor.h/.cpp` (UART2, mot de passe, poignée de main `0x40`, paramètres `0x0F`, nombre
+  d'empreintes `0x1D`, anneau `0x35`, signal de touche), constantes `PIN_FP_RX/TX/TOUCH` = 16 / 17 / 34
+  et `FP_BAUD` 57600 dans `config.h`, `probeFingerprint()` au démarrage, `updateFingerprint()` dans
+  `loop()` (anneau violet tant qu'un doigt est posé). 12 tests du format de paquet compilés avec g++
+  (`test_fingerprint_packet.py`, référence : `EF01FFFFFFFF0100071300000000001B` = VfyPwd mot de passe 0).
+  232 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,0 %). **Non vérifié sur le
+  capteur** : codes d'instruction d'après la bibliothèque et la documentation (0x40 en particulier,
+  absent de certains modèles), débit 57600 non confirmé. `docs/BROCHAGE.md` §1.3b ajouté.
+  En attente de l'essai sur la carte et de la validation de F1.
+- **2026-10-18** — Premier essai de F1 sur le capteur : le signal de touche (fil bleu WAKEUP, GPIO 34) est
+  **actif à l'état bas** — haut au repos, bas quand un doigt est posé (anneau violet et « doigt POSE » au
+  repos, inverse en posant, d'après l'utilisateur). Hypothèse initiale (haut = doigt) fausse. Correction :
+  `FP_TOUCH_ACTIVE_LOW = true` dans `config.h`, `touched()` en tient compte, message de démarrage
+  explicite. Les lignes du début (poignée de main, capacité) n'ont pas encore été vues par l'assistant.
+- **2026-10-18** — **F1 essayée sur la carte, conforme** : poignée de main `0x40` ok, capacité **200**
+  empreintes, sécurité 3/5, paquets de 128 octets, **57600 bauds confirmés**, 0 empreinte enregistrée,
+  ligne de touche haute au repos « lue comme doigt retire », puis `doigt POSE` / `doigt retire` dans le
+  bon sens après correction de polarité. Les codes de commande utilisés (0x13, 0x40, 0x0F, 0x1D, 0x35)
+  sont donc confirmés sur ce capteur. Constat sans rapport avec F1 : la carte a affiché
+  `Wi-Fi "BPI_R3-2G"`, broker `192.168.1.4`, `NO_AP_FOUND` — sa NVS contient un autre réseau que
+  `RPI5-AP` (essai fait ailleurs ?) ; à reconfigurer par le portail si besoin. En attente de validation de F1.

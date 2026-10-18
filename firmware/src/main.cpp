@@ -25,6 +25,7 @@
 #include "AudioOutput.h"
 #include "CommandHandler.h"
 #include "DemoDevices.h"
+#include "FingerprintSensor.h"
 #include "MicCapture.h"
 #include "MicSelfTest.h"
 #include "MqttLink.h"
@@ -64,6 +65,8 @@ uint8_t captureStorage[CAPTURE_FIFO_BYTES + 1];
 AudioFifo playbackFifo;  ///< PC -> tâche audio -> ampli
 AudioFifo captureFifo;   ///< micro -> tâche de capture -> loop() -> réseau
 PushButton button(PIN_BUTTON_PTT, BUTTON_DEBOUNCE_MS);
+FingerprintSensor fingerprint(Serial2, PIN_FP_RX, PIN_FP_TX, PIN_FP_TOUCH);  ///< capteur R503 (branche fingerprint)
+bool fingerprintWasTouched = false;
 StatusLed led(PIN_STATUS_LED);
 DemoDevices devices(PIN_DEMO_LIGHT);
 SerialFramer framer(Serial);
@@ -454,6 +457,67 @@ void setupWatchdog() {
                   static_cast<unsigned long>(WATCHDOG_TIMEOUT_S));
 }
 
+/**
+ * @brief Étape F1 : dialogue avec le capteur d'empreinte et essai de l'anneau lumineux.
+ *
+ * Affiche ce que le capteur répond, pour diagnostiquer le câblage sans autre outil.
+ */
+void probeFingerprint() {
+    Serial.printf("# empreinte : R503 sur RX=GPIO %d, TX=GPIO %d, touche=GPIO %d, %lu bauds\n", PIN_FP_RX,
+                  PIN_FP_TX, PIN_FP_TOUCH, static_cast<unsigned long>(FP_BAUD));
+    if (!fingerprint.begin(FP_BAUD, FP_PASSWORD)) {
+        // begin() ne dit pas pourquoi : on refait l'échange le plus simple pour afficher la cause.
+        Serial.printf("# empreinte : ABSENT (%s). Verifier fils jaune/GPIO %d, marron-vert/GPIO %d, 3,3 V.\n",
+                      FingerprintSensor::describe(fingerprint.handShake()), PIN_FP_RX, PIN_FP_TX);
+        return;
+    }
+    FingerprintSensor::Parameters parameters;
+    uint16_t count = 0;
+    const auto shake = fingerprint.handShake();
+    const auto read = fingerprint.readParameters(parameters);
+    const auto stored = fingerprint.templateCount(count);
+    Serial.printf("# empreinte : poignee de main : %s\n", FingerprintSensor::describe(shake));
+    if (read == FingerprintSensor::OK) {
+        Serial.printf("# empreinte : capacite %u empreintes, securite %u/5, paquets de %u octets, %lu bauds\n",
+                      parameters.libraryCapacity, parameters.securityLevel, parameters.packetBytes,
+                      static_cast<unsigned long>(parameters.baud));
+    } else {
+        Serial.printf("# empreinte : lecture des reglages : %s\n", FingerprintSensor::describe(read));
+    }
+    if (stored == FingerprintSensor::OK) {
+        Serial.printf("# empreinte : %u empreinte(s) enregistree(s)\n", count);
+    }
+    // Au démarrage, retirez le doigt : un « doigt pose » ici veut dire polarité inversée
+    // (FP_TOUCH_ACTIVE_LOW) ou fil bleu mal branché.
+    Serial.printf("# empreinte : au repos, la ligne de touche est a %s -> %s\n",
+                  digitalRead(PIN_FP_TOUCH) == HIGH ? "l'etat haut" : "l'etat bas",
+                  fingerprint.touched() ? "lue comme doigt POSE (anormal : verifier FP_TOUCH_ACTIVE_LOW)"
+                                        : "lue comme doigt retire (normal)");
+    // Essai de l'anneau : trois couleurs d'affilée, pour voir que les commandes passent.
+    for (const auto color : {FingerprintSensor::Color::Red, FingerprintSensor::Color::Blue,
+                             FingerprintSensor::Color::Purple}) {
+        fingerprint.setAura(FingerprintSensor::Aura::On, color, 0, 0);
+        delay(350);
+    }
+    fingerprint.setAura(FingerprintSensor::Aura::Off, FingerprintSensor::Color::Blue, 0, 0);
+    Serial.println("# empreinte : posez un doigt : l'anneau doit passer au violet et le journal l'indiquer");
+}
+
+/// Étape F1 : le signal de touche allume l'anneau et s'affiche dans le moniteur.
+void updateFingerprint() {
+    if (!fingerprint.present()) {
+        return;
+    }
+    const bool touched = fingerprint.touched();
+    if (touched == fingerprintWasTouched) {
+        return;
+    }
+    fingerprintWasTouched = touched;
+    Serial.printf("# empreinte : doigt %s\n", touched ? "POSE" : "retire");
+    fingerprint.setAura(touched ? FingerprintSensor::Aura::On : FingerprintSensor::Aura::Off,
+                        FingerprintSensor::Color::Purple, 0, 0);
+}
+
 }  // namespace
 
 void setup() {
@@ -524,6 +588,9 @@ void setup() {
         }
     }
 
+    // --- Capteur d'empreinte (branche fingerprint, étape F1).
+    probeFingerprint();
+
     // --- Entrée : auto-test du micro.
     micReady = selfTest.run();
     if (micReady) {
@@ -562,6 +629,8 @@ void loop() {
     while (reader.poll(frame)) {
         handleFrame(frame);
     }
+
+    updateFingerprint();
 
     // Réseau : non bloquant, sauf pendant une tentative de connexion au broker.
     wifi.update();

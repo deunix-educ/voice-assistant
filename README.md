@@ -320,6 +320,23 @@ L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)*
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées**.
 
+### Branche `fingerprint` — étape F1 : le capteur d'empreinte R503 seul
+
+Variante simplifiée (sans VAD, diarisation ni identification vocale) : un capteur d'empreinte dit **qui**
+tient le boîtier. Câblage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 16, 17 et 34).
+
+1. `make fw-upload`, puis `make fw-monitor` (ou minicom à 921600 bauds), carte redémarrée.
+2. Lignes attendues : `# empreinte : poignee de main : ok`, la capacité (200 pour un R503) et
+   `0 empreinte(s) enregistree(s)`, puis l'anneau passe par le rouge, le bleu et le violet.
+3. Posez un doigt : `# empreinte : doigt POSE`, anneau violet ; retirez-le : `doigt retire`.
+
+| Message | Cause probable |
+|---|---|
+| `ABSENT (pas de reponse …)` | fils RX/TX inversés (les croiser), 3,3 V absent, mauvais débit |
+| `lue comme doigt POSE` sans doigt, ou « POSE » et « retiré » inversés | polarité du signal de touche : `FP_TOUCH_ACTIVE_LOW` dans `config.h` (`true` pour votre capteur : haut au repos, bas quand le doigt est posé) ; sinon fil bleu mal branché |
+| poignée de main ok mais pas de `doigt POSE` | fil bleu (WAKEUP) non branché, ou fil blanc (3,3VT) sans 3,3 V |
+| `mot de passe refuse` | le capteur a un mot de passe : `FP_PASSWORD` dans `config.h` |
+
 ### Étape 16 — optimisation
 
 Mesurer d'abord, optimiser ensuite : `make latency` rejoue les derniers enregistrements

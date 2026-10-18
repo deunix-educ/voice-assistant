@@ -64,6 +64,24 @@ au repos est affiché pour information, sans intervenir dans la décision.
 La carte DevKit V1 possède déjà une LED bleue sur GPIO 2 : la LED externe est
 **optionnelle**, l'étape 1 est validable sans elle.
 
+### 1.3b Capteur d'empreinte R503 — branche `fingerprint`, étape F1
+
+Alimenté en **3,3 V** (environ 20 mA au repos). Liaison série sur l'UART2 de l'ESP32 WROOM, à 57600 bauds.
+
+| Fil du R503 | Rôle | ESP32 WROOM |
+|---|---|---|
+| Rouge | alimentation | 3,3 V |
+| Blanc | alimentation de la détection de toucher (3,3VT) | 3,3 V |
+| Noir | masse | GND |
+| Jaune | TX du capteur | **GPIO 16** (RX2) |
+| Marron, vert ou maron | RX du capteur | **GPIO 17** (TX2) |
+| Bleu | WAKEUP : **haut au repos, bas quand un doigt couvre le capteur** (mesuré sur le capteur de l'utilisateur) | **GPIO 34** (entrée seule) |
+
+TX et RX sont **croisés** : le TX d'un côté va au RX de l'autre. Les couleurs varient selon les
+revendeurs : se fier à l'étiquette du connecteur. GPIO 34 n'a pas de résistance interne, ce qui convient
+puisque le capteur pilote lui-même la ligne. ESP32-S3 Mini : brochage proposé dans CONTEXT.md (à contrôler
+sur la carte avant de câbler).
+
 ### 1.4 Haut-parleur
 
 | Caractéristique | Valeur conseillée |

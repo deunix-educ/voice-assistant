@@ -317,6 +317,23 @@ The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md
 
 Current step: **done — steps 1 to 16 are validated**.
 
+### `fingerprint` branch — step F1: the R503 fingerprint sensor alone
+
+Simplified variant (no VAD, diarization or voice identification): a fingerprint sensor tells **who**
+holds the box. Wiring: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 16, 17 and 34).
+
+1. `make fw-upload`, then `make fw-monitor` (or minicom at 921600 baud), board restarted.
+2. Expected lines: `# empreinte : poignee de main : ok`, the capacity (200 for an R503) and
+   `0 empreinte(s) enregistree(s)`, then the ring goes red, blue and purple.
+3. Put a finger on it: `# empreinte : doigt POSE`, purple ring; remove it: `doigt retire`.
+
+| Message | Likely cause |
+|---|---|
+| `ABSENT (pas de reponse …)` | RX/TX wires swapped (cross them), no 3.3 V, wrong baud rate |
+| `lue comme doigt POSE` with no finger, or "POSE" and "retiré" swapped | touch signal polarity: `FP_TOUCH_ACTIVE_LOW` in `config.h` (`true` for your sensor: high at rest, low when a finger is on it); otherwise blue wire badly connected |
+| handshake ok but no `doigt POSE` | blue (WAKEUP) wire not connected, or white (3.3VT) wire without 3.3 V |
+| `mot de passe refuse` | the sensor has a password: `FP_PASSWORD` in `config.h` |
+
 ### Step 16 — optimisation
 
 Measure first, optimise next: `make latency` replays the latest recordings through the

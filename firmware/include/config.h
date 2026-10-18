@@ -254,3 +254,26 @@ static constexpr uint32_t WATCHDOG_TIMEOUT_S = 15;
 /// Wi-Fi absent depuis ce délai (ms) : on relance la connexion de zéro. Filet de
 /// sécurité, si la reconnexion automatique n'aboutit pas (point d'accès redémarré...).
 static constexpr uint32_t WIFI_RESTART_MS = 30000;
+
+// ------------------------------------------------------------ Capteur d'empreinte R503 (branche fingerprint, F1)
+
+/// UART2 de l'ESP32 WROOM. RX2 reçoit le fil jaune (TX du capteur), TX2 envoie au fil de RX du capteur.
+static constexpr int PIN_FP_RX = 16;
+static constexpr int PIN_FP_TX = 17;
+
+/// Signal de touche (fil bleu WAKEUP). GPIO 34 est une entrée seule, sans résistance
+/// interne : le capteur pilote lui-même la ligne.
+static constexpr int PIN_FP_TOUCH = 34;
+
+/// Mesuré sur le capteur de l'utilisateur (2026-10-18) : la ligne est HAUTE au repos et passe
+/// à BAS quand un doigt est posé. true = actif à l'état bas ; à inverser si un autre modèle fait l'inverse.
+static constexpr bool FP_TOUCH_ACTIVE_LOW = true;
+
+/// Débit d'usine du capteur (57600 d'après la documentation ESPHome de ce composant).
+static constexpr uint32_t FP_BAUD = 57600;
+
+/// Mot de passe du capteur : 0 à la sortie d'usine.
+static constexpr uint32_t FP_PASSWORD = 0;
+
+/// Attente de la réponse du capteur (ms). Une commande simple répond en quelques ms.
+static constexpr uint32_t FP_REPLY_TIMEOUT_MS = 300;
