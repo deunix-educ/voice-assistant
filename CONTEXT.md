@@ -847,3 +847,31 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   faites (brochage WROOM : R503 sur GPIO 16/17 + WAKEUP 34 ; S3 : à vérifier sur la carte ; branche
   `fingerprint` dans ce dépôt plutôt qu'un clone). Questions en attente : mot de réveil conservé ou non,
   découpage en étapes. Rien d'écrit.
+- **2026-10-18** — **Branche `fingerprint` créée** (depuis `main` à `fcefb61`, locale, non poussée) pour la
+  variante simplifiée : sans VAD, diarisation ni identification vocale ; capteur d'empreinte R503 +
+  bouton ; cartes ESP32 WROOM et ESP32-S3 Mini. Mises à jour de `main` : `git merge main` dans cette branche.
+  **Lu dans la bibliothèque `mpagnoulle/R503-Fingerprint-Sensor-Library` (Apache-2.0)** :
+  `R503Lib(HardwareSerial*, rxPin, txPin, adresse)`, `begin(baud, mdp=0)` (baud non défini par défaut :
+  57600 d'après ESPHome), pas d'appel unique « enregistrer/chercher » :
+  enregistrement = `takeImage` → `extractFeatures(tampon 1)` → (2e doigt) `extractFeatures(tampon 2)` →
+  `createTemplate` → `storeTemplate(tampon, emplacement)` ; recherche = `takeImage` → `extractFeatures` →
+  `searchFinger(tampon, emplacement&, confiance&)` ; `deleteTemplate`, `emptyLibrary`,
+  `getTemplateCount`, `setSecurityLevel`, `setAuraLED(mode, couleur, vitesse, répétition)`
+  (modes : respiration, clignotement, allumé, éteint, fondu entrant/sortant ; couleurs R503 : rouge,
+  bleu, violet). Paquets : début `0xEF01`, adresse 32 bits, types commande `0x01` / données `0x02` /
+  accusé `0x07` / fin de données `0x08`, somme de contrôle. Codes de retour utiles : `0x00` ok,
+  `0x02` pas de doigt, `0x06` image brouillée, `0x08` pas de correspondance, `0x09` absent de la
+  bibliothèque. **Aucune gestion de la broche de touche (WAKEUP)** dans la bibliothèque : à lire
+  directement (entrée GPIO). Défaut de l'en-tête : `#define R503_ERROR_TRANSFER_DATA = 0x0E` (« = » en trop).
+  Décision : on s'en **inspire** (protocole UART du capteur, écrit dans une classe du projet, une
+  responsabilité, sans allocation dans la boucle audio) plutôt que de l'ajouter telle quelle.
+  Questions encore ouvertes : mot de réveil conservé ou non ; découpage en étapes.
+- **2026-10-18** — Décisions de l'utilisateur pour la branche `fingerprint` (« je suis tes recommandations ») :
+  **mot de réveil supprimé** (le doigt posé + le bouton déclenchent l'écoute, donc plus d'écoute continue,
+  de VAD ni d'openWakeWord dans cette variante) ; découpage en étapes accepté :
+  F1 capteur seul sur la WROOM (poignée de main, version, LED) ; F2 enregistrement et suppression des
+  doigts, `finger_id → nom` dans `config.yaml` ; F3 session déclenchée par le doigt (broche WAKEUP) :
+  début à la pose, fin au retrait, identité reconnue à la pose ; F4 serveur : droits par `finger_id`,
+  confirmation par le même doigt, retrait de la VAD / diarisation / identification vocale ;
+  F5 carte ESP32-S3 Mini (deuxième environnement PlatformIO). Chaque étape attend sa validation.
+  Rien d'écrit pour F1.
