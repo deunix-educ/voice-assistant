@@ -315,7 +315,7 @@ make lint                                # pyright type check
 
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
-Current step: **16 — optimisation**. Steps 1 to 15b are validated.
+Current step: **done — steps 1 to 16 are validated**.
 
 ### Step 16 — optimisation
 

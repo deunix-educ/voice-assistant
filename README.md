@@ -318,7 +318,7 @@ make lint                           # typage pyright
 
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
-Étape courante : **16 — optimisation**. Les étapes 1 à 15b sont validées.
+Étape courante : **terminée — les étapes 1 à 16 sont validées**.
 
 ### Étape 16 — optimisation
 

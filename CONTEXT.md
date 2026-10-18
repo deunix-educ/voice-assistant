@@ -36,7 +36,7 @@ Prompt de référence : `prompt-assistant-vocal-esp32.md` (rôle, style, feuille
 | 14 | Multi-utilisateurs | **fait** (serveur seul) | **oui (2026-09-30)** |
 | 15 | Fiabilisation | **fait** (broker + serveur + firmware) | **oui (2026-09-30)** |
 | 15b | **Agents Linux** (ajout utilisateur) : commander des machines du réseau | **fait** (serveur + agent) | **oui (2026-10-06)** |
-| 16 | Optimisation | **fait** (serveur + option broker ; firmware inchangé) | en attente |
+| 16 | Optimisation | **fait** (serveur + option broker ; firmware inchangé) | **oui (2026-10-18)** |
 
 **Règle absolue** : ne jamais démarrer l'étape N+1 avant validation explicite de l'étape N.
 
@@ -239,40 +239,33 @@ TLS (option de l'étape 15, non activée).
 1. Lire ce fichier, puis `README.md`.
 2. `make help` liste toutes les cibles.
 3. Vérifier l'étape en cours dans le tableau du §2, et **ne rien faire au-delà**.
-4. Contrôle rapide de l'environnement : `make test` (203 tests), `make lint`, `make fw-check`.
+4. Contrôle rapide de l'environnement : `make test` (220 tests), `make lint`, `make fw-check`.
 
-### État au 2026-09-30 au soir (fin de session)
+### État au 2026-10-06 au soir (fin de session)
 
-- **Étapes 1 à 15 validées.** Étape **15b écrite**, vérifiée hors carte (broker jetable), **pas encore
-  essayée par l'utilisateur**. Ne pas commencer l'étape 16 avant sa validation explicite.
-- Vérifié à l'arrêt : 203 tests, pyright 0 erreur (tools/ et agent/ inclus), `make fw-check`
-  SUCCESS 0 avertissement (RAM 36,7 %, Flash 31,5 %). Git : `main`, 1 commit, arbre propre.
-  Aucun serveur, agent ni conteneur de test lancé (`voice-acl-test`, `voice-agent-test` supprimés).
-- Broker : **Raspberry Pi 5, 192.168.1.200, comptes exigés** (depuis le 2026-10-06). Le serveur s'y
-  connecte (`voice-server`, `server/.env`). Le conteneur local (192.168.1.104, anonyme) n'est plus utilisé.
-- Firmware : la version **étape 13** est sur la carte (essais mains libres réussis) ; téléversement de
-  la version **étape 15** (chien de garde, présence serveur) **non confirmé**. Les deux fonctionnent
-  avec le serveur actuel, qui publie sa présence.
+- **Étapes 1 à 16 validées (feuille de route du prompt terminée)** ; étape 16 : commit `d114b98`.
+  Suite envisagée par l'utilisateur : variante simplifiée à capteur d'empreinte R503 (voir journal).
+- Contrôle : 220 tests, pyright 0 erreur (tools/ et agent/ inclus), `make fw-check` SUCCESS.
+- Broker : **Raspberry Pi 5**, 192.168.1.200 en Ethernet, **10.42.0.1** sur son point d'accès `RPI5-AP`
+  (WPA2, canal 6) ; comptes exigés. La carte (portail `VoiceAssist-Config`) vise 10.42.0.1.
+- Firmware sur la carte : inclut `WifiConfig` ; le chien de garde et la présence serveur (étape 15)
+  fonctionnent (carte vue en ligne). Rien à reflasher pour l'étape 16.
 - `server/.venv` : extras `speech`, `diarization` (torch CPU), `wakeword` ; `server/models/` complet ;
   `HF_TOKEN` dans `server/.env` — **secret de l'utilisateur, ne jamais le modifier ni l'afficher**.
   Ne jamais toucher `firmware/include/secrets.h` (utiliser `make fw-check`).
 - 6 profils vocaux : Denis (complet), Gilles, Jessica, Pierre, Siwis, Tom (standard). Phrases de
   test au téléphone : `recordings/voix-test/` (`make say`, `WAKE="Hey Mycroft"` = voix anglaise).
-- Mot de réveil retenu par l'utilisateur : **« Hey Mycroft »** (prononcé à l'anglaise).
+- Mot de réveil retenu : **« Hey Mycroft »** (prononcé à l'anglaise).
 
-### Reprise de l'étape 15b (actions de l'utilisateur)
+### Reprise de l'étape 16 (actions de l'utilisateur)
 
-1. Terminal 1 : `make agent-run` (crée `agent/agent.yaml` en **mode essai**, `dry_run: true` ; vérifier
-   `id: pc-bureau`, `mqtt.host: 192.168.1.200` et le compte MQTT `pc-bureau`).
-2. Terminal 2 : `make run` → `agent pc-bureau : en ligne, actions lock, reboot, shutdown`.
-3. « Hey Mycroft, verrouille le PC du bureau » → « Je verrouille le PC du bureau. » ; agent :
-   `essai : loginctl lock-sessions (non execute, dry_run)`.
-4. « Hey Mycroft, éteins le PC du bureau » → « Confirmez-vous… ? » → « Hey Mycroft, oui » → agent :
-   `essai : systemctl poweroff`.
-5. « Hey Mycroft, allume le PC du bureau » → « …est déjà en marche. »
-6. Ctrl-C sur l'agent → serveur : `agent pc-bureau : hors ligne` ; « éteins le PC du bureau » →
-   « …ne répond pas ».
-7. Analyser les journaux collés, puis demander la validation de l'étape 15b avant l'étape 16.
+1. Sur le Pi : `git pull`, puis `make mosquitto-config` (active `set_tcp_nodelay`).
+2. `make run`, quelques commandes courtes : le journal doit afficher
+   `1 locuteur (parole courte, empreinte directe … ms)` et `reponse prete en` ~1,1 s (1,5 s avant).
+3. Relever `premier son a … ms` (~240 ms avant) : seul moyen de confirmer l'effet de `TCP_NODELAY`.
+4. `make latency COUNT=60` : avant/après, gain, identifications qui diffèrent.
+5. Décisions attendues : numéros de séquence des chunks (touche le firmware) ; `end_silence_ms` 800 → 600.
+6. Puis demander la validation de l'étape 16.
 
 ### Points ouverts (ni oubliés, ni décidés)
 
@@ -289,8 +282,9 @@ TLS (option de l'étape 15, non activée).
 - Seuil d'identification 0,45 à recalibrer avec de vraies personnes.
 - Whisper : hallucination sur 0,8 s de parole (« Je vous remercie de votre soutien… ») ; un « Ouvre »
   perdu une fois en tête de commande.
-- Étape 16 : diarisation en parallèle de Whisper, `start_ms` ~214 ms (fenêtre TCP lwIP ?), numéros de
-  séquence (§3.4 du prompt) ; TLS (option de l'étape 15) si l'utilisateur le demande.
+- Étape 16 : parallélisme **écarté** (mesuré, voir §3). Restent : `start_ms` ~240 ms (hypothèse Nagle,
+  à confirmer), numéros de séquence (§3.4 du prompt), `end_silence_ms` ; TLS (option de l'étape 15)
+  si l'utilisateur le demande.
 
 ---
 
@@ -847,3 +841,9 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   (supprimé). **À faire par l'utilisateur** : `make mosquitto-config` sur le Pi pour `set_tcp_nodelay`.
   **Non fait, à décider** : numéros de séquence des chunks (§3.4 du prompt, change le protocole et le
   firmware) ; `end_silence_ms` (800 ms d'attente après la phrase, le plus gros délai restant).
+- **2026-10-18** — **Étape 16 validée** par l'utilisateur ; feuille de route du prompt terminée.
+  Idée soumise : version simplifiée sans VAD, diarisation ni identification vocale, avec capteur
+  d'empreinte R503 (`fingerprint_grow`) + bouton conservé, sur ESP32 WROOM et ESP32-S3 Mini. Propositions
+  faites (brochage WROOM : R503 sur GPIO 16/17 + WAKEUP 34 ; S3 : à vérifier sur la carte ; branche
+  `fingerprint` dans ce dépôt plutôt qu'un clone). Questions en attente : mot de réveil conservé ou non,
+  découpage en étapes. Rien d'écrit.
