@@ -87,38 +87,22 @@ def make_echo(resampler: AudioResampler, sender: AudioSender) -> Callable[[Sessi
 
 def make_assistant(settings: Settings, resampler: AudioResampler, sender: AudioSender,
                    link: MqttLink | None = None) -> Callable[[SessionResult], object]:
-    """Mode assistant (étapes 6-14) : charge les modèles, puis répond à chaque session."""
+    """Mode assistant (étapes 6-14, F4) : charge Whisper et Piper, puis répond à chaque session."""
     # Imports tardifs : le mode écho fonctionne sans l'extra « speech ».
     from voice_server.access_control import AccessPolicy
     from voice_server.assistant import Assistant
     from voice_server.command_router import CommandRouter
-    from voice_server.diarization import Diarizer
     from voice_server.home_control import HomeController
     from voice_server.machine_control import MachineController
-    from voice_server.speaker_identifier import SpeakerIdentifier
     from voice_server.speech_to_text import SpeechToText
     from voice_server.text_to_speech import TextToSpeech
-    from voice_server.voice_activity import VoiceActivityDetector
     from voice_server.voice_pipeline import VoicePipeline
 
     try:
         stt = SpeechToText(settings.stt, settings.audio.sample_rate)
         tts = TextToSpeech(settings.tts, resampler, settings.audio.sample_rate)
-        vad = VoiceActivityDetector(settings.vad, settings.audio.sample_rate)
     except ImportError as error:
         raise ImportError(f"{error} : lancez 'make install-speech'") from error
-
-    diarizer = None
-    identifier = None
-    if settings.diarization.enabled:
-        try:
-            diarizer = Diarizer(settings.diarization, settings.audio.sample_rate)
-        except ImportError as error:
-            raise ImportError(f"{error} : lancez 'make install-diarization', ou "
-                              "diarization.enabled: false dans config.yaml") from error
-        identifier = SpeakerIdentifier(settings.speaker, settings.diarization.model)
-    else:
-        logger.info("diarisation desactivee (config.yaml) : pas d'identification du locuteur")
 
     machines = None
     if link is not None:
@@ -128,18 +112,23 @@ def make_assistant(settings: Settings, resampler: AudioResampler, sender: AudioS
         link.on_topic(f"{settings.machines.topic_prefix}/+/result", machines.on_result)
         logger.info("machines : %s", ", ".join(settings.machines.machines) or "aucune (config.yaml)")
 
+    fingers = FingerprintBook(settings.fingerprint)
+    policy = AccessPolicy(settings.access, settings.home, settings.machines)
+    for warning in policy.audit(fingers.people()):
+        logger.warning("droits : %s", warning)
+    logger.info("doigts : %s", ", ".join(fingers.describe(finger_id) for finger_id in fingers.named_ids())
+                or "aucun nomme (make finger-enroll NAME=...)")
+
     pipeline = VoicePipeline(
-        vad=vad,
         stt=stt,
         assistant=Assistant(home=settings.home, machines=machines),
         tts=tts,
         player=sender,
-        diarizer=diarizer,
-        identifier=identifier,
+        fingers=fingers,
         publisher=link,
         controller=CommandRouter(HomeController(settings.home, link), machines) if link is not None else None,
-        policy=AccessPolicy(settings.access, settings.home, settings.machines),
-        direct_below_s=settings.diarization.direct_below_s,
+        policy=policy,
+        silence_rms_dbfs=settings.stt.min_rms_dbfs,
     )
     return pipeline.handle
 

@@ -122,7 +122,7 @@ Messages publiés par le serveur (étape 10) :
 
 | Topic | Qui publie | Quand | Retenu |
 |---|---|---|---|
-| `voice/esp32-01/transcript` `{"session":...,"utterances":[{"speaker":"Denis","text":...}]}` | le serveur (QoS 1) | après chaque question transcrite | non |
+| `voice/esp32-01/transcript` `{"session":...,"utterances":[{"speaker":"Denis","text":...,"score":null,"finger":2}]}` | le serveur (QoS 1) | après chaque question transcrite ; une seule intervention, la personne du doigt (`"Inconnu"` et `"finger":null` pour le bouton) | non |
 | `home/<pièce>/<appareil>/set` `{"action":"close","by":"Denis","board":"esp32-01",...}` | le serveur (QoS 1), étape 11 | à chaque commande domotique | **non** : rejouée à un abonné tardif, elle ferait bouger un volet |
 | `voice/esp32-01/control` `{"cmd":"device","device":"light","action":"on"}` | le serveur, étape 11 | commande pour la pièce de la carte | non |
 | `voice/esp32-01/event` `{"event":"device",...,"ok":true,"state":"on"}` | l'ESP32, étape 11 | confirmation d'exécution | non |

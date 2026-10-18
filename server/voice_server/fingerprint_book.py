@@ -2,10 +2,14 @@
 
 from __future__ import annotations
 
+import logging
 from collections.abc import Iterable
 
 from voice_server.settings import FingerprintSettings
 
+logger = logging.getLogger(__name__)
+
+UNKNOWN = "Inconnu"  # nom affiché quand la personne n'est pas connue (bouton PTT, doigt sans nom)
 FIRST_ID = 1  # l'emplacement 0 reste libre : un numéro nul ne se confond jamais avec « personne »
 
 
@@ -18,6 +22,21 @@ class FingerprintBook:
     def name_of(self, finger_id: int) -> str | None:
         """Nom du propriétaire, None si l'emplacement n'est pas nommé."""
         return self._users.get(finger_id)
+
+    def person_of(self, finger_id: int | None) -> str | None:
+        """La personne qui tient la carte : le nom du doigt reconnu, None si la session vient du bouton
+        ou si l'emplacement n'a pas de nom dans config.yaml (journalisé : c'est un oubli probable)."""
+        if finger_id is None:
+            return None
+        name = self._users.get(finger_id)
+        if name is None:
+            logger.warning("empreinte %d reconnue par le capteur mais sans nom dans fingerprint.users : "
+                           "traitee comme une personne inconnue", finger_id)
+        return name
+
+    def people(self) -> list[str]:
+        """Les personnes qui ont au moins un doigt, sans doublon, dans l'ordre des emplacements."""
+        return list(dict.fromkeys(self._users[finger_id] for finger_id in sorted(self._users)))
 
     def ids_of(self, name: str) -> list[int]:
         """Emplacements d'une personne (elle peut avoir plusieurs doigts), dans l'ordre."""

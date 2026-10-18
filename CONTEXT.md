@@ -47,8 +47,9 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 |---|---|---|---|
 | F1 | Capteur R503 seul sur la WROOM (poignée de main, réglages, anneau, touche) | **fait** (`67bd4a4`) | **oui (2026-10-18)** |
 | F2 | Enregistrer / lister / supprimer les doigts, `finger_id → nom` dans config.yaml | **fait** (`19c935c`) | **oui (2026-10-18)** |
-| F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (non commitée) | **oui (2026-10-18)** |
-| F4 | Serveur : droits par `finger_id`, confirmation par le même doigt, retrait VAD / diarisation / voix | à faire | — |
+| F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (`0c7fae1`) | **oui (2026-10-18)** |
+| F4 | Serveur : droits par doigt, confirmation par le même doigt, pipeline sans VAD / diarisation / voix | **fait** | **oui (2026-10-18)** |
+| F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | à faire | — |
 | F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | à faire | — |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
@@ -139,10 +140,10 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | Délais d'une commande mesurés en **audio reçu**, pas à l'horloge | 2026-09-30 | trouvé en simulation : en rafale Wi-Fi, 2 s de son peuvent arriver en 10 ms ; l'horloge ne sert qu'aux gardes (réponse sans bilan, flux perdu 2 s) |
 | LED : éclair 100 ms / 2 s = écoute continue ; allumée = commande en cours (`cmd capture`) ; `StatusLed::blink(period, onMs)` | 2026-09-30 | l'utilisateur voit quand le micro part sur le réseau |
 | Droits : **complet > standard > limite** (`access_control.py`) ; inconnu = limite, enrôlé sans niveau = standard, `users: {Denis: complet}` | 2026-09-30 | niveaux du prompt ; conversation toujours permise |
-| Niveau complet seulement si **score ≥ 0,6** (`full_min_score`), sinon rétrogradé en standard | 2026-09-30 | la voix n'est pas une preuve : une identification de justesse ne doit pas tout ouvrir |
+| *(supprimé en F4)* Niveau complet seulement si **score ≥ 0,6** (`full_min_score`), sinon rétrogradé en standard | 2026-09-30 | la voix n'est pas une preuve : une identification de justesse ne doit pas tout ouvrir |
 | Règles par appareil/action ; **action absente = niveau complet** | 2026-09-30 | on ne permet jamais par oubli |
 | Actions sensibles (`confirm: [door.open]`) : question, puis « oui »/« non » **de la même personne**, sur la même carte, en 15 s ; toute autre phrase abandonne la demande | 2026-09-30 | garde-fou pour la porte et pour les agents Linux (15b) |
-| Confirmation : acceptée si la voix est reconnue comme le demandeur, **ou** si elle est sous le seuil mais que le demandeur reste le **profil le plus proche** avec `access.confirm_min_score` (**0,25**) ; voix reconnue comme quelqu'un d'autre : refusée | 2026-10-06 | mesuré : 6 « oui » seuls de Denis (~0,7 s de parole) à 0,29-0,47, 5 sous le seuil 0,45 ; autres profils face à Denis ≤ 0,12 (profils entiers, surtout voix de synthèse : à revoir avec de vraies personnes) |
+| *(supprimé en F4 : la confirmation exige le MÊME DOIGT que la demande)* Confirmation : acceptée si la voix est reconnue comme le demandeur, **ou** si elle est sous le seuil mais que le demandeur reste le **profil le plus proche** avec `access.confirm_min_score` (**0,25**) ; voix reconnue comme quelqu'un d'autre : refusée | 2026-10-06 | mesuré : 6 « oui » seuls de Denis (~0,7 s de parole) à 0,29-0,47, 5 sous le seuil 0,45 ; autres profils face à Denis ≤ 0,12 (profils entiers, surtout voix de synthèse : à revoir avec de vraies personnes) |
 | Étape 16 : **parole < `diarization.direct_below_s` (4 s) = une seule personne** → `Diarizer.embed()` au lieu de la diarisation, Whisper sans mots horodatés | 2026-10-06 | mesuré sur 113 sessions réelles : 0,02 s contre 0,42 s, écart de score médian +0,001, 4 verdicts changés (2 en mieux, 2 en moins bien, tous au seuil) ; aucune session récente à 2 voix. Contrepartie : deux voix dans une phrase courte ne sont plus séparées |
 | Étape 16 : parallélisme diarisation / Whisper **écarté** | 2026-10-06 | mesuré : séquentiel 1,43-1,59 s, parallèle 1,34-1,56 s ; chacun ralentit l'autre (Whisper 1,1 → 1,4 s, diarisation 0,4 → 0,8 s), **même dans deux processus** : saturation du processeur, pas le verrou de Python |
 | Étape 16 : `beam_size` 5 gardé, `stt.cpu_threads` 0 (défaut, 4 fils) | 2026-10-06 | beam 1 : −0,05 s et 1 texte différent sur 16 ; fils : 4 → 1,08 s, 8 → 0,98 s, 16 → 1,29 s sur le PC ; l'encodeur de Whisper (fenêtre fixe de 30 s) domine |
@@ -263,9 +264,10 @@ TLS (option de l'étape 15, non activée).
 
 ### État au 2026-10-18 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1, F2 et F3 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2) ; F3 non commitée
-  tant que l'utilisateur ne l'a pas demandé.
-- `make test` : 310 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
+- Branche `fingerprint` : **F1, F2 et F3 validées**, **F4 validée (serveur)**. Commits : `67bd4a4` (F1),
+  `19c935c` (F2) ; `0c7fae1` (F3), puis F4 (commit suivant). Reste : F4b (suppression du
+  code inutile) puis F5 (ESP32-S3 Mini).
+- `make test` : 320 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
 - Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt
   garde `10.42.0.1`) ; `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil).
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
@@ -984,3 +986,23 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   micro-décollements, bruit du capteur sur le micro.
 - **2026-10-18** — **F3 validée** par l'utilisateur (« Ensemble des tests passés => OK. F3 validé »). Mesures de durée
   d'identification et de bruit non rapportées ; l'utilisateur n'a signalé aucun défaut.
+- **2026-10-18** — **F4 écrite** (branche `fingerprint`), serveur seul. La personne d'une session = le nom du doigt
+  (`SessionResult.finger_id` → `FingerprintBook.person_of`) ; bouton PTT ou doigt sans nom → inconnue
+  (`access.unknown`). `AccessPolicy` : `level(person)`, `check(command, person)`, `ask`, `resolve(board, text,
+  person)` — plus de score ni de « profil le plus proche » ; noms comparés sans casse ni accents (règle le cas
+  « denis » / « Denis » noté en F2) ; `full_min_score` et `confirm_min_score` supprimés ; confirmation par le
+  **même doigt** que la demande (l'utilisateur : « doigt exact » ; un autre doigt de la même personne reçoit « Confirmez
+  avec le même doigt que pour la demande », un doigt d'une autre personne ou le bouton « Seul Denis peut confirmer »)
+  ; `audit()` signale au
+  démarrage les noms qui ne se correspondent pas. `VoicePipeline` : plus de VAD, diarisation ni identificateur ;
+  Whisper reçoit toute la session, sans horodatage des mots ; filtre de silence `stt.min_rms_dbfs` (−58) : sur
+  180 enregistrements, bruit de fond −63 dBFS RMS, parole la plus faible −51 ; un clic du bouton (crête 0 dBFS)
+  ne se distingue pas par le niveau et passe à Whisper, qui l'écarte seul. Message `transcript` : une intervention
+  (+ clé `finger`). `make_assistant` ne charge plus pyannote ni Silero. Essai sur 6 enregistrements réels (Whisper
+  small + Piper, sans sortie vers la carte) : textes justes en ≈ 1 s, silences ignorés, audit vide avec la config
+  de l'utilisateur. Un serveur lancé avant F4 tourne encore avec l'ancien code (PID vu pendant l'essai) : à relancer.
+  320 tests, pyright 0 erreur. **Code devenu inutile mais encore présent** (supprimé en F4b) : `voice_activity.py`,
+  `diarization.py`, `speaker_identifier.py`, `speaker_attribution.py`, `wake_word.py`, `hands_free.py`, les sections
+  `vad`/`diarization`/`speaker`/`wake` de config.yaml et leurs outils/tests/extras, côté firmware l'écoute continue.
+- **2026-10-18** — **F4 validée** par l'utilisateur, avec la règle « doigt exact » pour la confirmation (corrigée avant
+  validation). F3 (`0c7fae1`) et F4 commitées à sa demande, en deux commits.

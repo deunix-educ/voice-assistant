@@ -45,6 +45,10 @@ stt:
     # étape 16 : fils de calcul de Whisper ; 0 = défaut de la bibliothèque (4). Mesuré sur un PC
     # à 20 cœurs logiques : 4 → 1,08 s, 8 → 0,98 s, 16 → 1,29 s (pire). Sur un Pi 5 : laisser 0.
     cpu_threads: 0
+    # F4 (sans VAD) : une session dont le niveau efficace est plus faible que cela est un silence,
+    # Whisper n'est pas appelé. Mesuré sur 180 sessions : bruit de fond -63 dBFS, parole la plus
+    # faible -51 dBFS. Un clic du bouton (jusqu'à -16 dBFS) n'est PAS filtré : Whisper l'écarte seul.
+    min_rms_dbfs: -58
 
 # étape 6 : synthèse vocale (modèle dans models/piper/<voice>.onnx, « make models »)
 # Piper produit du 22 050 Hz : le serveur rééchantillonne en audio.sample_rate.
@@ -52,6 +56,8 @@ tts:
     voice: fr_FR-siwis-medium
     length_scale: 1.0           # > 1 : débit plus lent
 
+# F4 : les sections vad, diarization et speaker ne servent plus (ni la VAD, ni la diarisation, ni
+# l'identification vocale ne tournent). Elles disparaissent à l'étape F4b.
 # étape 7 : détection d'activité vocale (Silero, fenêtres de 512 échantillons = 32 ms,
 # imposées à 16 kHz). Une session sans parole n'est pas transcrite.
 vad:
@@ -112,26 +118,23 @@ wake:
     max_command_s: 10
     cooldown_s: 20              # écoute suspendue pendant la réponse (jusqu'au bilan « played »)
 
-# étape 14 : droits par profil. La voix n'est JAMAIS une preuve d'identité : une
-# imitation ou un enregistrement peut tromper. Niveaux : complet > standard > limite.
+# étape 14 : droits par personne. Depuis F4, la personne est celle dont le DOIGT a ouvert la session
+# (section fingerprint, plus bas) ; la voix n'identifie plus personne. Niveaux : complet > standard > limite.
+# Les noms se comparent sans tenir compte de la casse ni des accents (« denis » = « Denis »).
 access:
-    unknown: limite             # voix non reconnue : conversation seulement
-    default: standard           # profil enrôlé absent de users
-    users:                      # noms des profils (make profiles)
+    unknown: limite             # bouton PTT, ou doigt sans nom dans fingerprint.users : conversation seulement
+    default: standard           # personne nommée par un doigt, absente de users
+    users:                      # nom de la personne → niveau ; le nom est celui de fingerprint.users
         Denis: complet
-    full_min_score: 0.6         # « complet » seulement si la voix est reconnue nettement
     rules:                      # niveau minimal par appareil et action ; absent = complet
         light: {"on": standard, "off": standard}   # guillemets : on/off nus = booléens en YAML
         shutter: {open: standard, close: standard}
         door: {open: complet, close: standard}
         machine: {wake: standard, lock: standard, shutdown: complet, reboot: complet}   # étape 15b
-    confirm: [door.open, machine.shutdown, machine.reboot]   # « Confirmez-vous ? » puis « oui »
+    # « Confirmez-vous ? » puis « oui », dit avec le MÊME DOIGT que la demande : un autre doigt de la
+    # même personne, le doigt d'une autre personne ou le bouton PTT annulent la demande.
+    confirm: [door.open, machine.shutdown, machine.reboot]
     confirm_timeout_s: 15
-    # Un « oui » seul dure ~0,7 s : trop court pour atteindre speaker.similarity_threshold
-    # (mesuré : Denis 0,29 à 0,47 ; les autres profils face à Denis : 0,12 au plus).
-    # La confirmation est donc acceptée si le demandeur reste le profil le PLUS PROCHE,
-    # avec au moins ce score. Une voix reconnue comme quelqu'un d'autre est refusée.
-    confirm_min_score: 0.25
 
 # étape 15b : machines Linux du réseau. Chacune fait tourner un agent (agent/voice_agent.py)
 # qui n'exécute QUE les actions de SA liste (/etc/voice-assistant/agent.yaml) ; ici, on dit
@@ -160,6 +163,4 @@ machines:
 # Les droits de chaque personne restent dans access.users, par nom.
 # Enregistrer un doigt : make finger-enroll NAME=Denis ; il affiche la ligne à ajouter ci-dessous.
 fingerprint:
-    users: {
-    1: Denis,
-    }                   # ex. : {1: Denis, 2: Denis, 3: Jessica}
+    users: { 1: Denis }                   # ex. : {1: Denis, 2: Denis, 3: Jessica}

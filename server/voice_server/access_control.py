@@ -1,4 +1,4 @@
-"""Droits par profil : qui peut demander quoi (étape 14).
+"""Droits par personne : qui peut demander quoi (étape 14, par doigt depuis F4).
 
 Trois niveaux, du plus au moins permissif :
 
@@ -7,17 +7,19 @@ Trois niveaux, du plus au moins permissif :
               ou verrouiller une machine (étape 15b) ;
     limite    la conversation seulement (heure, date…).
 
-L'identification vocale est une ESTIMATION : une imitation ou un enregistrement
-peut tromper. Ces droits évitent les erreurs et les commandes d'un invité, pas
-un attaquant déterminé. D'où deux garde-fous : le niveau complet exige une voix
-reconnue nettement, et les actions sensibles une confirmation par la même personne.
+La personne est celle dont le doigt a ouvert la session (fingerprint.users de config.yaml) :
+le capteur d'empreinte reconnaît le doigt, pas la voix, et la voix n'identifie plus personne.
+Sans doigt reconnu et nommé (bouton PTT, empreinte sans nom), la personne est inconnue : niveau
+access.unknown. Les actions sensibles demandent en plus une confirmation par le MÊME DOIGT que la
+demande : un autre doigt de la même personne ne suffit pas. Les noms se comparent sans tenir compte
+de la casse ni des accents.
 """
 
 from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from enum import IntEnum
 
@@ -74,10 +76,16 @@ class Resolution:
     command: Command | None   # à exécuter (oui), None (non, autre personne)
 
 
+def same_person(first: str | None, second: str | None) -> bool:
+    """« Denis » et « denis » sont la même personne ; None n'est personne."""
+    return first is not None and second is not None and normalize(first) == normalize(second)
+
+
 @dataclass(frozen=True)
 class _Pending:
     command: Command
-    speaker: str
+    person: str
+    finger: int       # emplacement du doigt qui a fait la demande : lui seul peut confirmer
     expires: float
 
 
@@ -98,7 +106,7 @@ class AccessPolicy:
         self._clock = clock
         self._unknown = parse_level(access.unknown_level)
         self._default = parse_level(access.default_level)
-        self._users = {name: parse_level(level) for name, level in access.users.items()}
+        self._users = {normalize(name): parse_level(level) for name, level in access.users.items()}
         self._rules = {device: {action: parse_level(level) for action, level in actions.items()}
                        for device, actions in access.rules.items()}
         allowed = {**ALLOWED, MACHINE_DEVICE: tuple(machines.actions) if machines is not None else ()}
@@ -110,46 +118,52 @@ class AccessPolicy:
                                  f"(connues : {', '.join(f'{d}.{a}' for d, acts in allowed.items() for a in acts)})")
         self._pending: dict[str, _Pending] = {}
 
-    def level(self, speaker: str | None, score: float | None) -> Level:
-        """Niveau de la personne ; le niveau complet exige une identification nette."""
-        if speaker is None:
+    def level(self, person: str | None) -> Level:
+        """Niveau de la personne ; inconnue : access.unknown ; connue mais absente de users : access.default."""
+        if person is None:
             return self._unknown
-        level = self._users.get(speaker, self._default)
-        if level is Level.FULL and (score is None or score < self._access.full_min_score):
-            return Level.STANDARD  # voix reconnue de justesse : pas assez sûr pour tout permettre
-        return level
+        return self._users.get(normalize(person), self._default)
 
-    def check(self, command: Command, speaker: str | None, score: float | None) -> Verdict:
+    def audit(self, people: Iterable[str]) -> list[str]:
+        """Incohérences entre les personnes aux doigts nommés et access.users, à journaliser au démarrage.
+
+        Un nom mal écrit ne planterait rien : la personne recevrait en silence le niveau par défaut.
+        """
+        named = {normalize(name): name for name in people}
+        warnings = [f"{name} a un doigt mais pas de niveau dans access.users : niveau par défaut "
+                    f"({LEVEL_NAMES[self._default]})"
+                    for key, name in sorted(named.items()) if key not in self._users]
+        warnings += [f"access.users nomme {name}, qui n'a aucun doigt dans fingerprint.users : "
+                     f"elle ne pourra jamais être reconnue"
+                     for name in self._access.users if normalize(name) not in named]
+        return warnings
+
+    def check(self, command: Command, person: str | None) -> Verdict:
         """La personne peut-elle faire cette commande, et faut-il confirmer ?"""
         # Action absente des règles : réservée au niveau complet (on ne permet pas par oubli).
         required = self._rules.get(command.device, {}).get(command.action, Level.FULL)
-        level = self._level_logged(speaker, score, command, required)
+        level = self._level_logged(person, command, required)
         what = self._request(command)
         if level < required:
-            if speaker is None:
-                return Verdict(False, False, f"Je ne vous ai pas reconnu : je ne peux pas {what}.")
-            if self._users.get(speaker, self._default) >= required:
-                # Le profil le permet, mais la voix a été reconnue de justesse (full_min_score).
-                return Verdict(False, False, f"{speaker}, je ne reconnais pas assez nettement votre voix "
-                                             f"pour {what}. Répétez, plus près du micro.")
-            return Verdict(False, False, f"Désolé {speaker}, votre profil ne permet pas {of(what)}.")
+            if person is None:
+                return Verdict(False, False, f"Je ne sais pas qui tient la carte : je ne peux pas {what}.")
+            return Verdict(False, False, f"Désolé {person}, votre profil ne permet pas {of(what)}.")
         if f"{command.device}.{command.action}" in self._access.confirm:
             return Verdict(True, True, f"Confirmez-vous : {what} ? Dites oui ou non.")
         return Verdict(True, False, None)
 
-    def ask(self, board: str, command: Command, speaker: str | None) -> None:
-        """Retient une commande en attente de « oui » de la même personne."""
-        if speaker is not None:
-            self._pending[board] = _Pending(command, speaker, self._clock() + self._access.confirm_timeout_s)
+    def ask(self, board: str, command: Command, person: str | None, finger: int | None) -> None:
+        """Retient une commande en attente du « oui » du même doigt."""
+        if person is not None and finger is not None:
+            self._pending[board] = _Pending(command, person, finger,
+                                            self._clock() + self._access.confirm_timeout_s)
 
-    def resolve(self, board: str, text: str, speaker: str | None, closest: str | None = None,
-                score: float | None = None) -> Resolution | None:
+    def resolve(self, board: str, text: str, person: str | None, finger: int | None) -> Resolution | None:
         """Réponse à une confirmation en attente ; None : pas de confirmation, requête ordinaire.
 
         Args:
-            speaker: personne reconnue, None si la voix n'atteint pas le seuil d'identification.
-            closest: profil le plus proche, même sous le seuil.
-            score: similarité avec ce profil.
+            person: personne dont le doigt a ouvert cette session, None si inconnue.
+            finger: emplacement de ce doigt, None pour le bouton PTT.
         """
         pending = self._pending.pop(board, None)
         if pending is None or self._clock() > pending.expires:
@@ -159,29 +173,16 @@ class AccessPolicy:
         said_no = any(word in NO for word in words)
         if not (said_yes or said_no):
             return None  # autre chose : la demande en attente est abandonnée, on traite la nouvelle
-        if speaker != pending.speaker and not self._probably(pending.speaker, speaker, closest, score):
-            logger.warning("%s : confirmation de %s refusee, donnee par %s", board, pending.speaker,
-                           speaker or f"une voix inconnue (proche de {closest}, {self._shown(score)})")
-            return Resolution(f"Seul {pending.speaker} peut confirmer. J'annule.", None)
-        if speaker != pending.speaker:
-            logger.info("%s : confirmation de %s acceptee a %s : voix trop courte pour le seuil, mais "
-                        "profil le plus proche", board, pending.speaker, self._shown(score))
+        if finger != pending.finger:
+            logger.warning("%s : confirmation de %s (empreinte %d) refusee, donnee par %s", board,
+                           pending.person, pending.finger,
+                           "le bouton" if finger is None else f"l'empreinte {finger} ({person or 'sans nom'})")
+            if same_person(person, pending.person):
+                return Resolution("Confirmez avec le même doigt que pour la demande. J'annule.", None)
+            return Resolution(f"Seul {pending.person} peut confirmer. J'annule.", None)
         if said_no:
             return Resolution("D'accord, j'annule.", None)
         return Resolution(self._announce(pending.command), pending.command)
-
-    def _probably(self, expected: str, speaker: str | None, closest: str | None, score: float | None) -> bool:
-        """Voix non reconnue, mais la personne attendue reste la plus proche : assez pour un « oui ».
-
-        Un « oui » dure moins d'une seconde, trop peu pour une empreinte nette. La demande,
-        elle, a été reconnue au seuil normal quelques secondes plus tôt, sur la même carte.
-        """
-        return (speaker is None and closest == expected and score is not None
-                and score >= self._access.confirm_min_score)
-
-    @staticmethod
-    def _shown(score: float | None) -> str:
-        return "?" if score is None else f"{score:.2f}"
 
     def _request(self, command: Command) -> str:
         """« ouvrir la porte du salon », « éteindre le PC du bureau »."""
@@ -191,12 +192,11 @@ class AccessPolicy:
         """« J'ouvre la porte du salon. », « J'éteins le PC du bureau. »"""
         return command.said if isinstance(command, MachineCommand) else announce(command, self._home)
 
-    def _level_logged(self, speaker: str | None, score: float | None, command: Command,
-                      required: Level) -> Level:
-        level = self.level(speaker, score)
+    def _level_logged(self, person: str | None, command: Command, required: Level) -> Level:
+        level = self.level(person)
         verdict = "autorise" if level >= required else "REFUSE"
         target = command.machine if isinstance(command, MachineCommand) else command.room
-        logger.info("droits : %s (niveau %s, score %s) %s %s %s : %s (requis %s)",
-                    speaker or "inconnu", LEVEL_NAMES[level], "?" if score is None else f"{score:.2f}",
-                    command.action, command.device, target, verdict, LEVEL_NAMES[required])
+        logger.info("droits : %s (niveau %s) %s %s %s : %s (requis %s)",
+                    person or "inconnu", LEVEL_NAMES[level], command.action, command.device, target,
+                    verdict, LEVEL_NAMES[required])
         return level

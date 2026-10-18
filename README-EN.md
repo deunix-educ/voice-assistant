@@ -317,6 +317,35 @@ The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md
 
 Current step: **done — steps 1 to 16 are validated**.
 
+### `fingerprint` branch — step F4: rights follow the finger
+
+The person is the one **whose finger opened the session** (`fingerprint.users` in `config.yaml`); the voice identifies
+nobody any more, and VAD, diarization and voice identification no longer run (the server starts without pyannote or
+torch). Rights are still those of step 14, by name (`access.users`), ignoring case and accents.
+
+| Who holds the board | Person | Level |
+|---|---|---|
+| finger named in `fingerprint.users` and listed in `access.users` | their name | the one in `access.users` |
+| named finger, absent from `access.users` | their name | `access.default` (standard) |
+| PTT button, or a recognized finger with no name | unknown | `access.unknown` (limited) |
+
+A finger **unknown to the sensor** never reaches the server (F3). A sensitive action (`access.confirm`) asks for a "yes"
+said with the **same finger** as the request: another finger of the same person, another person's finger or the button
+cancels the request. At startup the server reports names that do not match (`droits: …`).
+
+Without a VAD, a **silent** session (RMS below `stt.min_rms_dbfs`, −58 dBFS) is not transcribed: Whisper would make text
+up. Measured on 180 sessions: background noise −63 dBFS, quietest speech −51 dBFS.
+
+1. Stop and restart `make run` (a server started before F4 still applies voice-based rights). The log must say
+   `doigts : Denis (empreinte 1)` and show no `droits: …` line.
+2. Denis's finger: "turn on the light" → done; "open the door" → "Confirmez-vous…", put the **same** finger down again: "yes".
+3. Another person's finger: `make finger-enroll NAME=Jessica`, add the printed line to `config.yaml`, restart.
+   Jessica: light → done; door → "Désolé Jessica, votre profil ne permet pas d'ouvrir…".
+4. Denis asks to open the door, then Jessica's finger says "yes" → "Seul Denis peut confirmer. J'annule." ;
+   another finger of Denis (`make finger-enroll NAME=Denis`) → "Confirmez avec le même doigt que pour la demande."
+5. PTT button: light → "Je ne sais pas qui tient la carte…".
+6. Finger held without speaking → "Je n'ai rien entendu.", and `silencieuse (RMS …)` in the log.
+
 ### `fingerprint` branch — step F3: the finger opens the session
 
 No more wake word: **put an enrolled finger on the sensor, speak, lift it**. The ring shows where you are; the
@@ -336,7 +365,7 @@ PTT button still works (a session without identity).
 
 A finger already on the sensor at power-up, or put down during a button session, triggers nothing until it has left
 the sensor. The timings (brush 40 ms, release 150 ms, identification 3 s) are in `firmware/include/config.h`
-(`FP_*`). Per-finger rights come in step F4: for now the voice still identifies the speaker.
+(`FP_*`). Rights follow the finger from step F4 (below).
 
 ### `fingerprint` branch — step F2: enrolling fingers
 
@@ -447,6 +476,9 @@ Setup, **in this order**: a broker that is still open already accepts clients th
 4. `make mosquitto-docker`: the broker now requires the accounts.
 
 ### Step 14 — per-profile rights
+
+> On the `fingerprint` branch the "profile" is the person of the **finger** (step F4): no voice score, and the full
+> level no longer needs `full_min_score`.
 
 | Level | Rights | Given to |
 |---|---|---|

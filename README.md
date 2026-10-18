@@ -320,6 +320,35 @@ L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)*
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées**.
 
+### Branche `fingerprint` — étape F4 : les droits suivent le doigt
+
+La personne est celle **dont le doigt a ouvert la session** (`fingerprint.users` de `config.yaml`) ; la voix n'identifie
+plus personne, et la VAD, la diarisation et l'identification vocale ne tournent plus (le serveur démarre sans pyannote
+ni torch). Les droits restent ceux de l'étape 14, par nom (`access.users`), sans tenir compte de la casse ni des accents.
+
+| Qui tient la carte | Personne | Niveau |
+|---|---|---|
+| doigt nommé dans `fingerprint.users`, présent dans `access.users` | son nom | celui de `access.users` |
+| doigt nommé, absent de `access.users` | son nom | `access.default` (standard) |
+| bouton PTT, ou doigt reconnu mais sans nom | inconnue | `access.unknown` (limite) |
+
+Un doigt **inconnu du capteur** n'arrive jamais au serveur (F3). Une action sensible (`access.confirm`) demande « oui »,
+dit avec le **même doigt** que la demande : un autre doigt de la même personne, le doigt d'une autre personne ou le bouton
+annulent la demande. Au démarrage, le serveur signale les noms qui ne se correspondent pas (`droits : …`).
+
+Sans VAD, une session **silencieuse** (niveau efficace sous `stt.min_rms_dbfs`, −58 dBFS) n'est pas transcrite : Whisper
+y inventerait du texte. Mesuré sur 180 sessions : bruit de fond −63 dBFS, parole la plus faible −51 dBFS.
+
+1. Arrêtez puis relancez `make run` (un serveur lancé avant F4 applique encore les droits par la voix). Le journal doit
+   dire `doigts : Denis (empreinte 1)` et aucune ligne `droits : …`.
+2. Doigt de Denis : « allume la lumière » → exécuté ; « ouvre la porte » → « Confirmez-vous… », reposez le **même** doigt : « oui ».
+3. Un doigt d'une autre personne : `make finger-enroll NAME=Jessica`, ajoutez la ligne affichée dans `config.yaml`, relancez.
+   Jessica : « allume la lumière » → exécuté ; « ouvre la porte » → « Désolé Jessica, votre profil ne permet pas d'ouvrir… ».
+4. Denis demande d'ouvrir la porte, puis le doigt de Jessica dit « oui » → « Seul Denis peut confirmer. J'annule. » ;
+   un autre doigt de Denis (`make finger-enroll NAME=Denis`) → « Confirmez avec le même doigt que pour la demande. »
+5. Bouton PTT : « allume la lumière » → « Je ne sais pas qui tient la carte… ».
+6. Doigt tenu sans parler → « Je n'ai rien entendu. », et `silencieuse (RMS …)` dans le journal.
+
 ### Branche `fingerprint` — étape F3 : le doigt ouvre la session
 
 Plus de mot de réveil : on **pose un doigt enregistré sur le capteur, on parle, on le lève**. L'anneau dit où
@@ -339,7 +368,7 @@ l'on en est ; le bouton PTT reste utilisable (session sans identité).
 
 Un doigt déjà posé au démarrage, ou posé pendant une session du bouton, ne déclenche rien tant qu'il n'a pas quitté
 le capteur. Les durées (effleurement 40 ms, retrait 150 ms, identification 3 s) sont dans `firmware/include/config.h`
-(`FP_*`). Les droits par doigt viennent à l'étape F4 : pour l'instant, la voix identifie encore le locuteur.
+(`FP_*`). Les droits suivent le doigt depuis l'étape F4 (ci-dessous).
 
 ### Branche `fingerprint` — étape F2 : enregistrer les doigts
 
@@ -450,6 +479,9 @@ Mise en place, **dans cet ordre** : un broker encore ouvert accepte déjà les c
 4. `make mosquitto-docker` : le broker exige désormais les comptes.
 
 ### Étape 14 — droits par profil
+
+> Sur la branche `fingerprint`, le « profil » est la personne du **doigt** (étape F4) : plus de score de voix, et le niveau
+> complet n'exige plus `full_min_score`.
 
 | Niveau | Droits | Attribué à |
 |---|---|---|

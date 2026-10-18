@@ -181,3 +181,22 @@ def test_delete_one_and_all(caplog: pytest.LogCaptureFixture) -> None:
 def test_delete_refused_by_the_sensor() -> None:
     board = FakeBoard({"fp_delete": [{"event": "fp_delete", "id": 5, "ok": False}]})
     assert command_delete(board, BOOK, 5, False) == 1
+
+
+def test_person_of_gives_the_owner_of_a_finger() -> None:
+    assert BOOK.person_of(1) == "Denis" and BOOK.person_of(5) == "Jessica"
+
+
+def test_person_of_is_nobody_for_the_button() -> None:
+    """Une session du bouton n'a pas de doigt : personne."""
+    assert BOOK.person_of(None) is None
+
+
+def test_person_of_an_unnamed_finger_is_nobody_and_says_so(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level("WARNING"):
+        assert BOOK.person_of(9) is None
+    assert "empreinte 9" in caplog.text
+
+
+def test_people_lists_each_person_once_in_slot_order() -> None:
+    assert BOOK.people() == ["Denis", "Jessica"]

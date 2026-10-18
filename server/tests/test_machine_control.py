@@ -156,14 +156,14 @@ def test_rights_and_confirmation_for_machines() -> None:
     shutdown = decide_machine(MachineIntent("pc-bureau", "shutdown"), MACHINES, ONLINE).command
     assert lock is not None and shutdown is not None
 
-    assert policy.check(lock, "Pierre", 0.8).allowed
-    refused = policy.check(shutdown, "Pierre", 0.8)
+    assert policy.check(lock, "Pierre").allowed
+    refused = policy.check(shutdown, "Pierre")
     assert not refused.allowed and refused.answer == ("Désolé Pierre, votre profil ne permet pas "
                                                       "d'éteindre le PC du bureau.")
-    verdict = policy.check(shutdown, "Denis", 0.8)
+    verdict = policy.check(shutdown, "Denis")
     assert verdict.confirm and verdict.answer == "Confirmez-vous : éteindre le PC du bureau ? Dites oui ou non."
-    policy.ask("esp32-01", shutdown, "Denis")
-    resolution = policy.resolve("esp32-01", "oui", "Denis")
+    policy.ask("esp32-01", shutdown, "Denis", 1)
+    resolution = policy.resolve("esp32-01", "oui", "Denis", 1)
     assert resolution is not None and resolution.command == shutdown
     assert resolution.answer == "J'éteins le PC du bureau."
 

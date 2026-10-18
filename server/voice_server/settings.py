@@ -62,6 +62,7 @@ class SttSettings:
     no_speech_threshold: float
     model_dir: Path          # dossier du modèle téléchargé par « make models »
     cpu_threads: int = 0     # fils de calcul de Whisper ; 0 : défaut de la bibliothèque (4)
+    min_rms_dbfs: float = -58.0  # session plus faible : silence, Whisper n'est pas appelé (F4, sans VAD)
 
 
 @dataclass(frozen=True)
@@ -129,16 +130,14 @@ class WakeSettings:
 
 @dataclass(frozen=True)
 class AccessSettings:
-    """Droits par profil (étape 14). La voix n'est pas une preuve : c'est une commodité."""
+    """Droits par personne (étape 14). La personne est celle dont le doigt a ouvert la session (F4)."""
 
-    unknown_level: str                   # voix non reconnue
-    default_level: str                   # profil enrôlé sans niveau dans users
-    users: dict[str, str]                # nom du profil → complet | standard | limite
-    full_min_score: float                # niveau complet seulement si l'identification est nette
+    unknown_level: str                   # bouton PTT, ou empreinte sans nom dans fingerprint.users
+    default_level: str                   # personne nommée par un doigt, sans niveau dans users
+    users: dict[str, str]                # nom de la personne → complet | standard | limite
     rules: dict[str, dict[str, str]]     # appareil → action → niveau minimal
     confirm: tuple[str, ...]             # « door.open » : demande « oui » avant d'exécuter
     confirm_timeout_s: float
-    confirm_min_score: float = 0.25      # « oui » trop court pour le seuil : accepté si le demandeur reste le plus proche
 
 
 @dataclass(frozen=True)
@@ -311,6 +310,7 @@ def load_settings(path: Path) -> Settings:
             no_speech_threshold=float(stt["no_speech_threshold"]),
             model_dir=models_dir / "whisper" / str(stt["model"]),
             cpu_threads=int(stt.get("cpu_threads", 0)),
+            min_rms_dbfs=float(stt.get("min_rms_dbfs", -58.0)),
         ),
         tts=TtsSettings(
             voice=str(tts["voice"]),
@@ -356,12 +356,10 @@ def load_settings(path: Path) -> Settings:
             unknown_level=str(access["unknown"]),
             default_level=str(access["default"]),
             users={str(name): str(level) for name, level in dict(access.get("users") or {}).items()},
-            full_min_score=float(access["full_min_score"]),
             rules={str(device): {_key(action): str(level) for action, level in dict(actions).items()}
                    for device, actions in dict(access["rules"]).items()},
             confirm=tuple(str(item) for item in access.get("confirm") or ()),
             confirm_timeout_s=float(access["confirm_timeout_s"]),
-            confirm_min_score=float(access.get("confirm_min_score", 0.25)),
         ),
         machines=_machines(data),
         fingerprint=_fingerprint(data),
