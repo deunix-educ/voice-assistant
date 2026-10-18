@@ -129,6 +129,8 @@ Messages publiés par le serveur (étape 10) :
 | `voice/esp32-01/control` `{"cmd":"listen","enabled":true}` | le serveur, étape 13 | connexion ou redémarrage de la carte ; `false` à l'arrêt du serveur | non |
 | `voice/esp32-01/audio/stream` (PCM binaire, QoS 0) | l'ESP32, étape 13 | en continu tant que l'écoute est active, sauf pendant une réponse ou un appui | non |
 | `voice/esp32-01/control` `{"cmd":"capture","active":true}` | le serveur, étape 13 | mot de réveil entendu (LED allumée) ; `false` à la fin de la commande | non |
+| `voice/esp32-01/control` `{"cmd":"fp_enroll","id":3}`, `{"cmd":"fp_delete","id":3}` ou `{"all":true}`, `{"cmd":"fp_list"}`, `{"cmd":"fp_cancel"}` | `make finger-*`, branche fingerprint F2 | gestion des empreintes du capteur | non |
+| `voice/esp32-01/event` `{"event":"fp_enroll","step":"start\|retry\|remove_finger\|place_again\|done\|failed","id":3,"reason":"messy"}`, `{"event":"fp_list","ids":[...]}`, `{"event":"fp_delete","ok":true}` | l'ESP32, branche fingerprint F2 | réponses aux commandes `fp_*` | non |
 | `voice/server/status` `{"status":"online"}` | le serveur, étape 15 | à chaque connexion au broker | **oui** |
 | `voice/server/status` `{"status":"offline"}` | le serveur à l'arrêt, ou **le broker** (testament du serveur) s'il meurt | arrêt ou disparition du serveur : les cartes coupent leur micro | **oui** |
 | `agent/<machine>/state` `{"status":"online","actions":[...]}` | l'agent Linux, étape 15b ; `offline` par son testament | à sa connexion | **oui** |

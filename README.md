@@ -320,6 +320,30 @@ L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)*
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées**.
 
+### Branche `fingerprint` — étape F2 : enregistrer les doigts
+
+Le capteur garde les empreintes (200 emplacements) ; `config.yaml` dit à qui elles appartiennent.
+Le serveur vocal n'a pas besoin de tourner : l'outil parle directement à la carte par MQTT.
+
+```bash
+make finger-enroll NAME=Denis          # deux poses du MÊME doigt ; l'anneau guide, le terminal aussi
+make finger-enroll NAME=Denis ID=2     # un deuxième doigt de la même personne
+make finger-list                       # empreintes du capteur et propriétaire
+make finger-delete ID=2                # ou ALL=1 pour tout effacer
+make finger-list MQTT_HOST=192.168.1.4 # broker différent de celui de config.yaml
+```
+
+L'enregistrement affiche la ligne à copier dans `server/config.yaml` :
+
+```yaml
+fingerprint:
+    users: {1: Denis, 2: Denis, 3: Jessica}   # emplacement dans le capteur → nom
+```
+
+Les droits restent par nom dans `access.users`. Anneau : bleu qui respire = posez le doigt ; violet = pose
+prise, retirez ; éclairs bleus = enregistré ; éclairs rouges = échec. L'emplacement 0 n'est jamais choisi
+automatiquement. Un doigt déjà enregistré est refusé (avec son numéro) ; deux poses de doigts différents aussi.
+
 ### Branche `fingerprint` — étape F1 : le capteur d'empreinte R503 seul
 
 Variante simplifiée (sans VAD, diarisation ni identification vocale) : un capteur d'empreinte dit **qui**

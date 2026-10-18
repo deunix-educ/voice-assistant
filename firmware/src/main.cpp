@@ -25,6 +25,7 @@
 #include "AudioOutput.h"
 #include "CommandHandler.h"
 #include "DemoDevices.h"
+#include "FingerprintEnrollment.h"
 #include "FingerprintSensor.h"
 #include "MicCapture.h"
 #include "MicSelfTest.h"
@@ -67,6 +68,8 @@ AudioFifo captureFifo;   ///< micro -> tâche de capture -> loop() -> réseau
 PushButton button(PIN_BUTTON_PTT, BUTTON_DEBOUNCE_MS);
 FingerprintSensor fingerprint(Serial2, PIN_FP_RX, PIN_FP_TX, PIN_FP_TOUCH);  ///< capteur R503 (branche fingerprint)
 bool fingerprintWasTouched = false;
+void onEnrollmentStep(FingerprintEnrollment::Step step, uint16_t id, const char* reason);
+FingerprintEnrollment enrollment(fingerprint, onEnrollmentStep, FP_ENROLL_TIMEOUT_MS);
 StatusLed led(PIN_STATUS_LED);
 DemoDevices devices(PIN_DEMO_LIGHT);
 SerialFramer framer(Serial);
@@ -107,6 +110,7 @@ PlaybackStream playback(speaker, playbackFifo);
 void onListen(bool enabled);
 void onCapture(bool active);
 CommandHandler commands(playback, mqtt, devices, onListen, onCapture);
+void onFingerprintCommand(const char* command, int id, bool all);
 
 // Pile et contrôle de la tâche de capture, alloués statiquement.
 StaticTask_t captureTaskControl;
@@ -503,9 +507,116 @@ void probeFingerprint() {
     Serial.println("# empreinte : posez un doigt : l'anneau doit passer au violet et le journal l'indiquer");
 }
 
+/**
+ * @brief Étape F2 : une étape de l'enregistrement, journalisée et publiée sur voice/<id>/event.
+ *
+ * {"event":"fp_enroll","step":"start|retry|remove_finger|place_again|done|failed","id":3,"reason":"messy"}
+ * Pour « failed/already_enrolled », « id » est l'emplacement du doigt déjà connu.
+ */
+void onEnrollmentStep(FingerprintEnrollment::Step step, uint16_t id, const char* reason) {
+    using Step = FingerprintEnrollment::Step;
+    const char* name = "start";
+    switch (step) {
+    case Step::Start: name = "start"; break;
+    case Step::Retry: name = "retry"; break;
+    case Step::RemoveFinger: name = "remove_finger"; break;
+    case Step::PlaceAgain: name = "place_again"; break;
+    case Step::Done: name = "done"; break;
+    case Step::Failed: name = "failed"; break;
+    }
+    Serial.printf("# empreinte : enregistrement %s, emplacement %u%s%s\n", name, id, reason != nullptr ? ", " : "",
+                  reason != nullptr ? reason : "");
+    char payload[128];
+    if (reason != nullptr) {
+        snprintf(payload, sizeof(payload), "{\"event\":\"fp_enroll\",\"step\":\"%s\",\"id\":%u,\"reason\":\"%s\"}",
+                 name, id, reason);
+    } else {
+        snprintf(payload, sizeof(payload), "{\"event\":\"fp_enroll\",\"step\":\"%s\",\"id\":%u}", name, id);
+    }
+    mqtt.publish("event", payload, false);
+}
+
+/// Publie l'échec d'une commande d'empreinte refusée avant même de toucher au capteur.
+void publishEnrollmentRefused(int id, const char* reason) {
+    char payload[128];
+    snprintf(payload, sizeof(payload), "{\"event\":\"fp_enroll\",\"step\":\"failed\",\"id\":%d,\"reason\":\"%s\"}", id,
+             reason);
+    mqtt.publish("event", payload, false);
+}
+
+/// Étape F2 : liste des emplacements occupés, publiée sur voice/<id>/event.
+void publishFingerprintList() {
+    uint16_t ids[FingerprintSensor::DEFAULT_CAPACITY];
+    size_t found = 0;
+    uint16_t count = 0;
+    const auto listed = fingerprint.listTemplates(ids, sizeof(ids) / sizeof(ids[0]), found);
+    const auto counted = fingerprint.templateCount(count);
+    char payload[1280];  // 200 emplacements de 3 chiffres + virgule au pire : ~800 octets
+    int used = snprintf(payload, sizeof(payload), "{\"event\":\"fp_list\",\"ok\":%s,\"capacity\":%u,\"count\":%u,\"ids\":[",
+                        listed == FingerprintSensor::OK ? "true" : "false", fingerprint.capacity(),
+                        counted == FingerprintSensor::OK ? count : 0);
+    for (size_t i = 0; listed == FingerprintSensor::OK && i < found && i < sizeof(ids) / sizeof(ids[0]) &&
+                       used < static_cast<int>(sizeof(payload)) - 8;
+         ++i) {
+        used += snprintf(payload + used, sizeof(payload) - used, "%s%u", i == 0 ? "" : ",", ids[i]);
+    }
+    snprintf(payload + used, sizeof(payload) - used, "]}");
+    Serial.printf("# empreinte : liste : %u emplacement(s) occupe(s), le capteur en compte %u (%s)\n",
+                  static_cast<unsigned>(found), count, FingerprintSensor::describe(listed));
+    mqtt.publish("event", payload, false);
+}
+
+/// Étape F2 : suppression d'une empreinte (ou de toutes), confirmée sur voice/<id>/event.
+void deleteFingerprint(int id, bool all) {
+    const auto code = all ? fingerprint.removeAll() : fingerprint.remove(static_cast<uint16_t>(id));
+    char payload[128];
+    if (all) {
+        snprintf(payload, sizeof(payload), "{\"event\":\"fp_delete\",\"all\":true,\"ok\":%s}",
+                 code == FingerprintSensor::OK ? "true" : "false");
+    } else {
+        snprintf(payload, sizeof(payload), "{\"event\":\"fp_delete\",\"id\":%d,\"ok\":%s}", id,
+                 code == FingerprintSensor::OK ? "true" : "false");
+    }
+    Serial.printf("# empreinte : suppression %s : %s\n", all ? "de toutes" : "d'une", FingerprintSensor::describe(code));
+    mqtt.publish("event", payload, false);
+}
+
+/// Commandes fp_* du serveur (CommandHandler) : enregistrer, supprimer, lister, annuler.
+void onFingerprintCommand(const char* command, int id, bool all) {
+    if (!fingerprint.present()) {
+        Serial.println("# empreinte : commande ignoree, capteur absent");
+        if (strcmp(command, "fp_enroll") == 0) {
+            publishEnrollmentRefused(id, "sensor");
+        }
+        return;
+    }
+    if (strcmp(command, "fp_list") == 0) {
+        publishFingerprintList();
+    } else if (strcmp(command, "fp_cancel") == 0) {
+        enrollment.cancel();
+    } else if (strcmp(command, "fp_delete") == 0) {
+        if (enrollment.busy()) {
+            Serial.println("# empreinte : suppression refusee pendant un enregistrement");
+        } else if (all || (id >= 0 && id < fingerprint.capacity())) {
+            deleteFingerprint(id, all);
+        }
+    } else if (strcmp(command, "fp_enroll") == 0) {
+        if (id < 0 || id >= fingerprint.capacity()) {
+            publishEnrollmentRefused(id, "bad_id");
+        } else if (!enrollment.begin(static_cast<uint16_t>(id), millis())) {
+            publishEnrollmentRefused(id, "busy");
+        }
+    }
+}
+
 /// Étape F1 : le signal de touche allume l'anneau et s'affiche dans le moniteur.
 void updateFingerprint() {
     if (!fingerprint.present()) {
+        return;
+    }
+    if (enrollment.busy()) {
+        enrollment.update(millis());
+        fingerprintWasTouched = fingerprint.touched();  // l'anneau est piloté par l'enregistrement
         return;
     }
     const bool touched = fingerprint.touched();
@@ -588,8 +699,9 @@ void setup() {
         }
     }
 
-    // --- Capteur d'empreinte (branche fingerprint, étape F1).
+    // --- Capteur d'empreinte (branche fingerprint, étapes F1 et F2).
     probeFingerprint();
+    commands.setFingerprintCallback(onFingerprintCommand);
 
     // --- Entrée : auto-test du micro.
     micReady = selfTest.run();

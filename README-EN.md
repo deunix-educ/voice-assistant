@@ -317,6 +317,30 @@ The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md
 
 Current step: **done — steps 1 to 16 are validated**.
 
+### `fingerprint` branch — step F2: enrolling fingers
+
+The sensor stores the fingerprints (200 slots); `config.yaml` says who owns them. The voice server
+does not need to run: the tool talks to the board directly over MQTT.
+
+```bash
+make finger-enroll NAME=Denis          # two scans of the SAME finger; the ring and the terminal guide you
+make finger-enroll NAME=Denis ID=2     # a second finger of the same person
+make finger-list                       # fingerprints in the sensor and their owner
+make finger-delete ID=2                # or ALL=1 to erase everything
+make finger-list MQTT_HOST=192.168.1.4 # a broker other than the one in config.yaml
+```
+
+Enrolling prints the line to copy into `server/config.yaml`:
+
+```yaml
+fingerprint:
+    users: {1: Denis, 2: Denis, 3: Jessica}   # slot in the sensor → name
+```
+
+Rights stay per name in `access.users`. Ring: blue breathing = place the finger; purple = scan taken,
+remove it; blue flashes = enrolled; red flashes = failed. Slot 0 is never picked automatically. A finger
+that is already enrolled is refused (with its number), and so are two scans of different fingers.
+
 ### `fingerprint` branch — step F1: the R503 fingerprint sensor alone
 
 Simplified variant (no VAD, diarization or voice identification): a fingerprint sensor tells **who**

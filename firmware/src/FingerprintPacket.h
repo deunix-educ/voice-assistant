@@ -76,6 +76,37 @@ inline size_t build(uint32_t address, uint8_t pid, const uint8_t* payload, size_
 }
 
 /**
+ * @brief Emplacements occupés d'après une page de la table d'index du capteur.
+ *
+ * Un bit par emplacement, 8 par octet, le bit de poids faible d'abord : l'octet 0 couvre les
+ * emplacements 0 à 7, et ainsi de suite.
+ *
+ * @param bitmap   Octets de la page.
+ * @param bytes    Nombre d'octets de la page (32).
+ * @param first    Emplacement du premier bit de la page.
+ * @param limit    Capacité de la bibliothèque : les bits au-delà sont ignorés.
+ * @param ids      Reçoit les emplacements occupés.
+ * @param maxIds   Taille de @p ids.
+ * @return Nombre d'emplacements occupés (même si @p ids est plein : le compte reste juste).
+ */
+inline size_t idsFromIndexTable(const uint8_t* bitmap, size_t bytes, uint16_t first, uint16_t limit,
+                                uint16_t* ids, size_t maxIds) {
+    size_t found = 0;
+    for (size_t byte = 0; byte < bytes; ++byte) {
+        for (int bit = 0; bit < 8; ++bit) {
+            const uint16_t id = static_cast<uint16_t>(first + byte * 8 + bit);
+            if (id < limit && (bitmap[byte] & (1u << bit)) != 0) {
+                if (found < maxIds) {
+                    ids[found] = id;
+                }
+                ++found;
+            }
+        }
+    }
+    return found;
+}
+
+/**
  * @brief Décodeur octet par octet d'un paquet reçu. Pas d'allocation, pas d'attente.
  *
  * Les octets qui précèdent le code de début sont ignorés : le capteur et la carte

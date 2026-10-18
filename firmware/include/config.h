@@ -272,8 +272,15 @@ static constexpr bool FP_TOUCH_ACTIVE_LOW = true;
 /// Débit d'usine du capteur (57600 d'après la documentation ESPHome de ce composant).
 static constexpr uint32_t FP_BAUD = 57600;
 
+/// Enregistrement d'une empreinte (F2) : attente maximale à chaque pose du doigt, ou du retrait (ms).
+static constexpr uint32_t FP_ENROLL_TIMEOUT_MS = 20000;
+
 /// Mot de passe du capteur : 0 à la sortie d'usine.
 static constexpr uint32_t FP_PASSWORD = 0;
 
-/// Attente de la réponse du capteur (ms). Une commande simple répond en quelques ms.
+/// Attente de la réponse du capteur (ms). Une commande simple (mot de passe, paramètres, anneau) répond en quelques ms.
 static constexpr uint32_t FP_REPLY_TIMEOUT_MS = 300;
+
+/// Attente pour les commandes qui calculent (capture, extraction, recherche, fusion, écriture) : le capteur
+/// peut y passer plusieurs centaines de ms. Un délai trop court faisait échouer l'enregistrement (F2).
+static constexpr uint32_t FP_SLOW_REPLY_TIMEOUT_MS = 3000;

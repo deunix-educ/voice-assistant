@@ -53,6 +53,13 @@ void CommandHandler::handle(const uint8_t* payload, size_t length) {
         return;
     }
 
+    if (strncmp(command, "fp_", 3) == 0) {
+        if (_onFingerprint != nullptr) {
+            _onFingerprint(command, doc["id"] | -1, doc["all"] | false);
+        }
+        return;
+    }
+
     if (strcmp(command, "device") == 0) {
         handleDevice(doc["device"] | "", doc["action"] | "");
         return;

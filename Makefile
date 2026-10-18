@@ -42,7 +42,7 @@ MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de s
 
 .DEFAULT_GOAL := help
 .PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech install-diarization install-wakeword models \
-        say latency speech-check transcribe vad vad-all diarize diarize-demo enroll profiles forget run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
+        say latency finger-list finger-enroll finger-delete speech-check transcribe vad vad-all diarize diarize-demo enroll profiles forget run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
         fw-monitor clean
 
 ## ------------------------------------------------------------------ aide
@@ -163,6 +163,18 @@ models:  ## Télécharge les modèles de config.yaml dans server/models (étapes
 say:  ## Fait dire [WAKE (voix anglaise) puis] TEXT par VOICE (SPEAKER) : WAV + MP3 dans SAY_OUT, pour un téléphone
 	$(PY) tools/say.py "$(TEXT)" --voice $(VOICE) $(if $(SPEAKER),--speaker $(SPEAKER)) \
 		$(if $(WAKE),--wake "$(WAKE)" --wake-voice $(WAKE_VOICE)) --out $(SAY_OUT)
+
+# Adresse du broker pour les outils finger-* : celle de config.yaml, sauf MQTT_HOST donné en ligne de commande.
+FINGER_HOST = $(if $(filter command line,$(origin MQTT_HOST)),--host $(MQTT_HOST))
+
+finger-list:  ## Liste les empreintes du capteur R503 et leur propriétaire (branche fingerprint, F2)
+	$(PY) tools/finger.py $(FINGER_HOST) list
+
+finger-enroll:  ## Enregistre un doigt : make finger-enroll NAME=Denis [ID=3] (deux poses du même doigt)
+	$(PY) tools/finger.py $(FINGER_HOST) enroll $(if $(NAME),--name "$(NAME)") $(if $(ID),--id $(ID))
+
+finger-delete:  ## Supprime une empreinte (ID=3) ou toutes (ALL=1)
+	$(PY) tools/finger.py $(FINGER_HOST) delete $(if $(ID),--id $(ID)) $(if $(ALL),--all)
 
 latency:  ## Mesure la latence du serveur avant/après l'étape 16 sur les COUNT derniers enregistrements
 	$(PY) tools/latency_check.py --last $(COUNT)

@@ -898,3 +898,40 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   sont donc confirmés sur ce capteur. Constat sans rapport avec F1 : la carte a affiché
   `Wi-Fi "BPI_R3-2G"`, broker `192.168.1.4`, `NO_AP_FOUND` — sa NVS contient un autre réseau que
   `RPI5-AP` (essai fait ailleurs ?) ; à reconfigurer par le portail si besoin. En attente de validation de F1.
+- **2026-10-18** — F1 commitée (`67bd4a4`). **F2 écrite** (branche `fingerprint`). Firmware :
+  `FingerprintPort.h` (interface : touche, image, extraction, recherche, modèle, écriture, anneau),
+  `FingerprintEnrollment.h` (automate sans attente : pose 1 → extraction tampon 1 → recherche de doublon
+  → retrait → pose 2 → tampon 2 → fusion → écriture ; 20 s par attente, 5 captures ratées tolérées),
+  `FingerprintSensor` étendu (commandes 0x01, 0x02, 0x04, 0x05, 0x06, 0x0C, 0x0D, 0x1F),
+  `idsFromIndexTable` (table d'index, **bit de poids faible d'abord : hypothèse à vérifier sur la carte**
+  en comparant `fp_list` à `count`), `CommandHandler` : `fp_enroll/fp_delete/fp_list/fp_cancel`, événements
+  `fp_enroll` (étapes start, retry, remove_finger, place_again, done, failed + motif), `fp_list`,
+  `fp_delete`. Serveur/outils : section `fingerprint.users` (id → nom, plusieurs doigts par personne
+  permis), `fingerprint_book.py` (emplacement 0 jamais attribué automatiquement), `tools/finger.py` et
+  `make finger-list|finger-enroll|finger-delete` (`MQTT_HOST=` en ligne de commande = autre broker).
+  Vérifié : 24 tests de l'automate compilés avec g++, tests de l'outil avec une carte simulée, essai de
+  bout en bout sur un broker jetable avec une fausse carte `esp32-test` (broker supprimé).
+  277 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,1 %).
+  **Non vérifié sur le capteur** : enregistrement réel, codes 0x04 (recherche, paramètre « nombre de
+  pages » = capacité), 0x0A (fusion impossible), 0x1F (table d'index) ; durée réelle des échanges.
+  En attente de l'essai sur la carte et de la validation de F2.
+- **2026-10-18** — Premier essai de F2 : `finger.py enroll` → « ECHEC : le capteur ne répond pas
+  correctement » (motif `sensor`) dès la première pose. Cause non établie (pas de journal série fourni).
+  Hypothèse principale : délai de réponse de 300 ms trop court pour les commandes qui calculent
+  (capture, extraction, recherche). Correction : `FP_SLOW_REPLY_TIMEOUT_MS` = 3000 pour 0x01, 0x02, 0x04,
+  0x05, 0x06, 0x0C, 0x0D ; et le firmware journalise désormais tout code inattendu :
+  `# empreinte : commande 0x.. -> code 0x.. (texte) apres N ms`. À refaire après `make fw-upload`.
+- **2026-10-18** — F2 après correction des délais : `make finger-list` montre **1 empreinte à l'emplacement 1**,
+  `count` cohérent avec la liste → l'enregistrement a abouti et le décodage de la table d'index
+  (bit de poids faible d'abord) est confirmé sur le capteur (un décodage inversé aurait donné l'emplacement 6).
+  L'utilisateur a enregistré avec `--name "denis"` (minuscule) : les droits (`access.users`) sont par nom
+  EXACT (« Denis ») ; F4 devra rapprocher les noms sans tenir compte de la casse ou l'utilisateur utiliser « Denis ».
+  Restent à essayer : refus d'un doigt déjà connu, de deux doigts différents, suppression.
+
+- **2026-10-18** — F2 : après suppression puis réenregistrement, le doigt de Denis est à l'emplacement **2**
+  alors que `fingerprint.users` nommait déjà 1 → `free_id` saute les emplacements nommés. Corrigé :
+  `finger.py enroll --name X` réutilise d'abord un emplacement déjà attribué à X dans config.yaml mais
+  vide dans le capteur.
+- **2026-10-18** — F2 essayée par l'utilisateur sur la carte : enregistrement réel réussi, refus d'un doigt
+  déjà enregistré **OK**, refus de deux doigts différents **OK**, liste et décodage de la table d'index
+  confirmés. Commitée à sa demande. Validation explicite de F2 (avant F3) : à confirmer.

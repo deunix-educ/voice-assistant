@@ -170,6 +170,13 @@ class MachinesSettings:
 
 
 @dataclass(frozen=True)
+class FingerprintSettings:
+    """Capteur d'empreinte (branche fingerprint, étape F2) : à qui appartient chaque empreinte."""
+
+    users: dict[int, str]        # emplacement dans le capteur → nom (les niveaux de droits : access.users)
+
+
+@dataclass(frozen=True)
 class Settings:
     """Configuration complète du serveur."""
 
@@ -185,6 +192,7 @@ class Settings:
     wake: WakeSettings
     access: AccessSettings
     machines: MachinesSettings
+    fingerprint: FingerprintSettings
     recordings_dir: Path
     models_dir: Path
     log_level: str
@@ -232,6 +240,21 @@ def _machines(data: dict[str, Any]) -> MachinesSettings:
         actions=actions,
         machines=machines,
     )
+
+
+def _fingerprint(data: dict[str, Any]) -> FingerprintSettings:
+    """Section « fingerprint » (branche fingerprint), facultative : sans elle, aucune empreinte nommée."""
+    section: dict[str, Any] = data.get("fingerprint") or {}
+    users: dict[int, str] = {}
+    for finger_id, name in dict(section.get("users") or {}).items():
+        try:
+            number = int(finger_id)
+        except (TypeError, ValueError):
+            raise ValueError(f"config.yaml, fingerprint.users : « {finger_id} » n'est pas un numero d'empreinte") from None
+        if number < 0 or not str(name).strip():
+            raise ValueError(f"config.yaml, fingerprint.users : empreinte {finger_id} : numero >= 0 et nom non vide requis")
+        users[number] = str(name).strip()
+    return FingerprintSettings(users=users)
 
 
 def load_settings(path: Path) -> Settings:
@@ -341,6 +364,7 @@ def load_settings(path: Path) -> Settings:
             confirm_min_score=float(access.get("confirm_min_score", 0.25)),
         ),
         machines=_machines(data),
+        fingerprint=_fingerprint(data),
         recordings_dir=(base / str(storage["recordings_dir"])).resolve(),
         models_dir=models_dir,
         log_level=str(logging_cfg["level"]),

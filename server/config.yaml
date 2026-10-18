@@ -154,3 +154,12 @@ machines:
             names: [pc du bureau, p c du bureau, ordinateur du bureau]
             name: le PC du bureau
             mac: ""             # ex. "aa:bb:cc:dd:ee:ff" (ip link) pour « allume le PC du bureau »
+
+# branche fingerprint, étape F2 : capteur d'empreinte R503. Chaque doigt enregistré dans le capteur
+# a un numéro (emplacement) ; ici, à qui il appartient. Une même personne peut avoir plusieurs doigts.
+# Les droits de chaque personne restent dans access.users, par nom.
+# Enregistrer un doigt : make finger-enroll NAME=Denis ; il affiche la ligne à ajouter ci-dessous.
+fingerprint:
+    users: {
+    1: Denis,
+    }                   # ex. : {1: Denis, 2: Denis, 3: Jessica}
