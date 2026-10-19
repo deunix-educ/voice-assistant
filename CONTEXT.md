@@ -283,6 +283,10 @@ TLS (option de l'étape 15, non activée).
 - Depuis F8, `server/config.yaml` n'est plus suivi par git : c'est la copie locale de l'utilisateur (`mqtt.host: 192.168.1.4`),
   créée depuis `server/config.example.yaml` (modèle, `mqtt.host: 10.42.0.1`) par `make install` / `make config`. Plus besoin de
   l'index forcé (`git hash-object` + `update-index`) : le modèle se commite normalement. `wake.enabled: false` sur la branche.
+- **Décision de l'utilisateur (2026-10-19) : garder les deux branches** en parallèle, sans fusion : `main` = version avec voix
+  (VAD, diarisation, profils vocaux, mot de réveil), `fingerprint` = version à empreinte (F1 à F8). Un correctif utile aux deux se
+  reporte à la main (`git cherry-pick`), les deux historiques ayant divergé (13 commits d'écart, 77 fichiers). Le README §4.0
+  explique comment choisir et comment changer de branche sans perdre `server/config.yaml`.
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
 - Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration) ;
   **pas de liste de réseaux** dans le portail (le nom se recopie à l'identique).
@@ -1175,3 +1179,5 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   `server/config.yaml` local** (git écrase les fichiers ignorés) puis le retour sur `fingerprint` l'a supprimé. Remis depuis la copie
   prise avant le commit F8 (identique : `include`, `mqtt.host 192.168.1.4`, 7 pièces, Denis, 1 doigt), dépôt revenu sur `fingerprint`
   @ `5dff1b3`, propre, service actif, 313 tests passent. Le README documente ce piège de bascule.
+- **2026-10-19** — **Fusion dans `main` : décision de l'utilisateur, « garder les 2 branches »** (aucune fusion, aucune étiquette
+  posée). `main` reste à `fcefb61` (étape 16), `fingerprint` à `e740a2a`.
