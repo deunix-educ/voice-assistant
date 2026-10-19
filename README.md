@@ -47,6 +47,7 @@ On pose un doigt enregistré sur le capteur, on parle, on le lève : la session 
 | Élément | Détail |
 |---|---|
 | ESP32-WROOM-32 | deux périphériques I2S : I2S0 en réception, I2S1 en émission |
+| ESP32-S3 Mini (branche `fingerprint`) | même firmware, autre brochage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.5, environnement `esp32s3mini` |
 | INMP441 | micro I2S, **3,3 V**, broche L/R à GND (canal gauche) |
 | MAX98357A | ampli classe D mono, **5 V**, SD à VIN, GAIN laissé libre (9 dB) |
 | Bouton | Push-To-Talk entre GPIO 4 et GND (pull-up interne) |
@@ -55,7 +56,7 @@ On pose un doigt enregistré sur le capteur, on parle, on le lève : la session 
 
 ### Câblage
 
-**Schéma complet : [docs/wiring.svg](docs/wiring.svg)** — brochage détaillé,
+**Schéma complet : [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM) ou **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, avec le capteur R503) — brochage détaillé,
 bilan de consommation et vérifications au multimètre : **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
 
 ```
@@ -110,6 +111,8 @@ make pio-venv          # PlatformIO dans son propre venv — une seule fois
 make fw-build          # compile sans flasher
 make fw-upload SERIAL_PORT=/dev/ttyUSB0
 ```
+
+ESP32-S3 Mini : ajouter `FW_ENV=esp32s3mini` et prendre le port USB natif (`/dev/ttyACM0`), voir l'étape F5.
 
 **Premier démarrage — portail de configuration WiFi**
 
@@ -301,7 +304,53 @@ make lint                           # typage pyright
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées** (branche `main`).
-Branche `fingerprint` : F1 à F4 validées, F4b (suppression du code inutile) en cours, puis F5 (ESP32-S3 Mini).
+Branche `fingerprint` : F1 à F4b et F5 (ESP32-S3 Mini) validées.
+
+### Branche `fingerprint` — étape F5 : la carte ESP32-S3 Mini
+
+Le même firmware tourne sur deux cartes : l'**ESP32 WROOM** (environnement `esp32dev`, par défaut) et l'**ESP32-S3 Mini**
+(18 broches, USB-C, flash 4 Mo, environnement `esp32s3mini`). Seuls changent le brochage
+([firmware/include/pins_esp32_s3_mini.h](firmware/include/pins_esp32_s3_mini.h), câblage au §1.5 de
+[docs/BROCHAGE.md](docs/BROCHAGE.md)) et le moniteur série : l'USB-C parle directement à la puce, sans puce USB-série.
+
+```bash
+make fw-check  FW_ENV=esp32s3mini                              # compile
+make fw-upload FW_ENV=esp32s3mini SERIAL_PORT=/dev/ttyACM0     # téléverse
+make fw-monitor SERIAL_PORT=/dev/ttyACM0                       # moniteur (le « débit » n'a pas de sens en USB natif)
+```
+
+Sans `FW_ENV`, toutes les cibles `fw-*` visent la WROOM, comme avant. La carte affiche `# carte : ESP32-S3 Mini (esp32s3mini)`
+au démarrage : si vous lisez `ESP32 WROOM`, le mauvais environnement a été téléversé.
+
+Câbler et essayer **par étapes**, carte débranchée de l'USB pour chaque ajout :
+
+1. Carte seule : `# carte : …`, puis l'auto-test du micro échoue (pas de micro) : c'est normal.
+2. Capteur R503 sur GPIO 1, 2, 4 : `poignee de main : ok`, `200 empreintes`, et l'anneau suit la pose du doigt.
+3. Micro INMP441 (GPIO 5, 6, 7) : l'auto-test passe, `micro pret`.
+4. Ampli MAX98357A (GPIO 13, 12, 11) : le bip de démarrage de 440 Hz.
+5. Bouton (GPIO 10), puis `make run` : une session par le bouton, puis par un doigt enregistré (F3).
+
+Une carte neuve n'a **aucune configuration réseau** : elle essaie `secrets.h` (s'il existe), sinon il faut le portail. Tenez PTT
+enfoncé environ 10 s à la mise sous tension (3 s d'attente de la carte, puis 3 s de maintien) : la carte affiche `portail force`,
+la LED d'état clignote vite, et le Wi-Fi `VoiceAssist-Config` donne accès à http://192.168.4.1. Recopiez le nom du réseau **à
+l'identique** (la carte ne parle qu'en **2,4 GHz**) : un nom faux donne `NO_AP_FOUND` en boucle.
+
+L'identifiant de la carte reste `esp32-01` pour les deux cartes : n'en branchez qu'**une** à la fois sur le broker (deux
+cartes de même identifiant s'éjectent l'une l'autre). Les empreintes sont gardées **dans le capteur** : un R503 déplacé d'une
+carte à l'autre garde ses doigts.
+
+| Constat | Cause probable |
+|---|---|
+| `/dev/ttyUSB0` absent | l'USB natif s'appelle `/dev/ttyACM0` (groupe `dialout`) |
+| le téléversement ne démarre pas | maintenir BOOT, appuyer sur RESET, relâcher RESET puis BOOT, relancer |
+| aucune ligne au démarrage | moniteur ouvert trop tard : le port disparaît à chaque reset ; la carte attend 3 s, puis jette les messages sans terminal |
+| `ABSENT` pour le capteur | fils jaune et marron sur GPIO 1 et 2, croisés ; 3,3 V |
+| carte qui ne démarre plus | un fil sur GPIO 0, 3, 45 ou 46 (broches de démarrage) |
+| son déformé ou bruit | le cadrage Philips (`AMP_FORMAT_PHILIPS`) est vérifié sur S3 (bip propre) ; sinon l'essayer à `false` dans `config.h` |
+| redémarrages en boucle, `invalid header: 0xffffffff` | flash vierge (carte neuve) : téléverser le firmware, c'est normal avant |
+| `NO_AP_FOUND` en boucle | nom du réseau mal saisi dans le portail, ou réseau en 5 GHz seulement |
+| `chunks perdus faute de place` au journal du serveur, mots mal compris | signal Wi-Fi trop faible (mesuré : −87 dBm = 147 chunks perdus, −73 dBm = aucun) : rapprocher la carte du point d'accès |
+| la carte redémarre à l'ouverture du port série (outil maison) | DTR/RTS abaissés à l'ouverture : laisser les valeurs par défaut |
 
 ### Branche `fingerprint` — étape F4 : les droits suivent le doigt
 

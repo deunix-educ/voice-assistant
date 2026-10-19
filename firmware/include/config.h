@@ -26,25 +26,26 @@ static constexpr size_t AUDIO_CHUNK_SAMPLES = (AUDIO_SAMPLE_RATE * AUDIO_CHUNK_M
 /// Taille d'un chunk en octets : 800 x 2 = 1600.
 static constexpr size_t AUDIO_CHUNK_BYTES = AUDIO_CHUNK_SAMPLES * sizeof(int16_t);
 
-// --------------------------------------------------------- Broches micro INMP441
+// ------------------------------------------------------------------ Broches (par carte)
 
-static constexpr int PIN_MIC_SCK = 25;  ///< Horloge bit (BCLK) du micro
-static constexpr int PIN_MIC_WS  = 26;  ///< Sélection de mot (LRCL / WS)
-static constexpr int PIN_MIC_SD  = 33;  ///< Donnée série sortante du micro (DOUT)
-
-// ------------------------------------------------------ Broches ampli MAX98357A
-
-static constexpr int PIN_AMP_BCLK = 27;  ///< Horloge bit
-static constexpr int PIN_AMP_LRC  = 14;  ///< Sélection de mot
-static constexpr int PIN_AMP_DIN  = 22;  ///< Donnée série entrante de l'ampli
+/**
+ * Les broches dépendent de la carte : un en-tête par carte, choisi par le drapeau de compilation
+ * de l'environnement PlatformIO (platformio.ini). Sans drapeau : l'ESP32 WROOM (DevKit V1).
+ *
+ *   BOARD_ESP32_S3_MINI  ->  pins_esp32_s3_mini.h   (environnement esp32s3mini)
+ *   (aucun)              ->  pins_esp32_wroom.h     (environnement esp32dev)
+ *
+ * Chaque en-tête définit : PIN_MIC_SCK/WS/SD (micro INMP441), PIN_AMP_BCLK/LRC/DIN (ampli MAX98357A),
+ * PIN_BUTTON_PTT, PIN_STATUS_LED, PIN_DEMO_LIGHT, PIN_FP_RX/TX/TOUCH (capteur R503),
+ * BOARD_NAME et BOOT_SERIAL_DELAY_MS. Le brochage de chaque carte est détaillé dans docs/BROCHAGE.md.
+ */
+#if defined(BOARD_ESP32_S3_MINI)
+#include "pins_esp32_s3_mini.h"
+#else
+#include "pins_esp32_wroom.h"
+#endif
 
 // ------------------------------------------------------------ Interface utilisateur
-
-static constexpr int PIN_BUTTON_PTT = 4;  ///< Bouton « Push-To-Talk », pull-up interne
-static constexpr int PIN_STATUS_LED = 2;  ///< LED d'état (broche de strapping, sortie seule : acceptable)
-/// LED de démonstration domotique (étape 11) : « la lumière » de la pièce de la carte.
-/// GPIO 21 : libre, sans rôle au démarrage. LED + résistance 330 Ω vers GND.
-static constexpr int PIN_DEMO_LIGHT = 21;
 
 /// Durée d'anti-rebond du bouton (ms).
 static constexpr uint32_t BUTTON_DEBOUNCE_MS = 30;
@@ -257,13 +258,8 @@ static constexpr uint32_t WIFI_RESTART_MS = 30000;
 
 // ------------------------------------------------------------ Capteur d'empreinte R503 (branche fingerprint, F1)
 
-/// UART2 de l'ESP32 WROOM. RX2 reçoit le fil jaune (TX du capteur), TX2 envoie au fil de RX du capteur.
-static constexpr int PIN_FP_RX = 16;
-static constexpr int PIN_FP_TX = 17;
-
-/// Signal de touche (fil bleu WAKEUP). GPIO 34 est une entrée seule, sans résistance
-/// interne : le capteur pilote lui-même la ligne.
-static constexpr int PIN_FP_TOUCH = 34;
+/// Broches du capteur (PIN_FP_RX, PIN_FP_TX, PIN_FP_TOUCH) : voir l'en-tête de la carte. Le capteur parle par
+/// l'UART2 (Serial2) à FP_BAUD ; PIN_FP_TOUCH est son fil bleu WAKEUP.
 
 /// Mesuré sur le capteur de l'utilisateur (2026-10-18) : la ligne est HAUTE au repos et passe
 /// à BAS quand un doigt est posé. true = actif à l'état bas ; à inverser si un autre modèle fait l'inverse.

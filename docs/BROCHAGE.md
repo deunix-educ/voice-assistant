@@ -1,6 +1,7 @@
-# Brochage et câblage — ESP32-WROOM-32 + INMP441 + MAX98357A
+# Brochage et câblage — ESP32-WROOM-32 (ou ESP32-S3 Mini, §1.5) + INMP441 + MAX98357A
 
-Document de référence du câblage. Schéma visuel : [wiring.svg](wiring.svg)
+Document de référence du câblage. Schémas visuels : [wiring.svg](wiring.svg) (ESP32 WROOM) et
+[wiring-esp32-s3.svg](wiring-esp32-s3.svg) (ESP32-S3 Mini, avec le capteur R503)
 (clic droit → « Open Preview » dans VSCodium, ou ouverture dans un navigateur).
 
 > **Avant de câbler** : ESP32 débranché de l'USB. On ne modifie jamais un câblage
@@ -79,8 +80,63 @@ Alimenté en **3,3 V** (environ 20 mA au repos). Liaison série sur l'UART2 de l
 
 TX et RX sont **croisés** : le TX d'un côté va au RX de l'autre. Les couleurs varient selon les
 revendeurs : se fier à l'étiquette du connecteur. GPIO 34 n'a pas de résistance interne, ce qui convient
-puisque le capteur pilote lui-même la ligne. ESP32-S3 Mini : brochage proposé dans CONTEXT.md (à contrôler
-sur la carte avant de câbler).
+puisque le capteur pilote lui-même la ligne. ESP32-S3 Mini : voir §1.5.
+
+### 1.5 Carte ESP32-S3 Mini — branche `fingerprint`, étape F5
+
+Schéma complet, avec rails d'alimentation et découplage : **[wiring-esp32-s3.svg](wiring-esp32-s3.svg)** (aperçu : [wiring-esp32-s3.png](wiring-esp32-s3.png)).
+
+Carte de petite taille (environ 24 × 18 mm), **18 broches** à souder ou à braser, USB-C, **flash 4 Mo**, boutons
+BOOT et RESET, LED RVB étiquetée 48. Environnement PlatformIO `esp32s3mini`, brochage dans
+[pins_esp32_s3_mini.h](../firmware/include/pins_esp32_s3_mini.h). Les mêmes composants que sur la WROOM, tous
+alimentés comme au §1.1, §1.2 et §1.3b : seule la broche de l'ESP32 change.
+
+```
+              ┌──── USB-C ────┐
+        TX    │ ●           ● │ 5V     → alimente le MAX98357A (VIN)
+        RX    │ ●           ● │ GND
+   R503 jaune │ 1           3V3│        → INMP441 (VDD, L/R à GND) et R503 (rouge, blanc)
+   R503 marron│ 2          13 │ MAX98357A BCLK
+   (libre : 3)│ 3          12 │ MAX98357A LRC
+   R503 bleu  │ 4          11 │ MAX98357A DIN
+   INMP441 SCK│ 5          10 │ bouton PTT (l'autre borne à GND)
+   INMP441 WS │ 6           9 │ LED d'état (330 Ω, anode ; cathode à GND)
+   INMP441 SD │ 7           8 │ LED de démonstration (330 Ω)
+              └───────────────┘
+```
+
+| Signal | GPIO | Fil / remarque |
+|---|---|---|
+| INMP441 `SCK` | **5** | horloge bit |
+| INMP441 `WS` | **6** | sélection de mot |
+| INMP441 `SD` | **7** | donnée, micro → ESP32 |
+| MAX98357A `BCLK` | **13** | horloge bit |
+| MAX98357A `LRC` | **12** | sélection de mot |
+| MAX98357A `DIN` | **11** | donnée, ESP32 → ampli |
+| Bouton PTT | **10** | l'autre borne à GND, pull-up interne |
+| LED d'état (externe) | **9** | GPIO 9 → 330 Ω → anode ; cathode → GND |
+| LED de démonstration | **8** | GPIO 8 → 330 Ω → anode ; cathode → GND |
+| R503 jaune (TX du capteur) | **1** | UART2, 57600 bauds |
+| R503 marron (RX du capteur) | **2** | croisé : le TX d'un côté va au RX de l'autre |
+| R503 bleu (WAKEUP) | **4** | haut au repos, bas quand un doigt est posé |
+| R503 rouge et blanc | **3V3** | environ 20 mA au repos |
+| R503 noir | **GND** | |
+
+Pourquoi ces broches : toutes sont sérigraphiées sur la carte (les numéros sont ceux des GPIO) et **aucune** n'est
+sensible au démarrage. Évitées : **GPIO 0** (bouton BOOT), **3, 45, 46** (*strapping* : leur niveau au reset choisit le
+mode de démarrage), **19 et 20** (USB natif), **26 à 32** (flash et PSRAM du module), **33 à 37** (PSRAM octale selon la
+variante). **TX et RX (GPIO 43 et 44)** restent libres : le texte du démarrage de la puce y sort à 115200 bauds, ce qui
+ne ferait que brouiller le capteur.
+
+La LED RVB de la carte (étiquetée 48) est une LED adressable WS2812 : elle ne s'allume pas par un simple niveau, le
+firmware ne la pilote pas. D'où la LED d'état externe, comme sur la WROOM (elle reste facultative).
+
+**Alimentation** : le 5 V de l'USB-C sort sur la broche `5V` (pour l'ampli) ; l'INMP441 et le R503 se prennent sur
+`3V3` (régulateur de la carte, quelques dizaines de mA). Mêmes précautions qu'au §7 : câbler **sans USB branché**.
+
+**Moniteur série et téléversement** : pas de puce USB-série, la puce parle en USB directement (USB-Serial/JTAG). Le
+port s'appelle **`/dev/ttyACM0`** (pas `ttyUSB0`), et il disparaît et revient à chaque reset. Si le téléversement
+ne démarre pas tout seul : maintenir **BOOT**, appuyer sur **RESET**, relâcher RESET puis BOOT, et relancer.
 
 ### 1.4 Haut-parleur
 
@@ -373,6 +429,8 @@ Le test 11 exige que le firmware soit déjà téléversé : le pull-up est activ
 ---
 
 ## 10. Récapitulatif des GPIO réservés
+
+Ce tableau est celui de l'**ESP32 WROOM** ; celui de l'ESP32-S3 Mini est au §1.5.
 
 | GPIO | Usage | Étape |
 |---|---|---|

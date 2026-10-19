@@ -238,7 +238,8 @@ const char* resetReason() {
     case ESP_RST_POWERON:
         return "poweron";
     case ESP_RST_EXT:
-        return "external";  // broche EN, ou ouverture du port série sur certaines cartes
+    case ESP_RST_USB:
+        return "external";  // broche EN, ouverture du port série, ou reset demandé par l'USB natif (ESP32-S3)
     case ESP_RST_SW:
         return "software";
     case ESP_RST_PANIC:
@@ -658,9 +659,14 @@ void setup() {
 
     Serial.setRxBufferSize(SERIAL_RX_BUFFER_BYTES);  // avant begin(), sinon ignoré
     Serial.begin(SERIAL_BAUD);
+#if ARDUINO_USB_CDC_ON_BOOT
+    // USB natif (ESP32-S3) : sans terminal ouvert, la file d'émission se remplit ; chaque message attendrait
+    // alors 100 ms qu'un lecteur arrive. On jette plutôt les messages : l'audio ne doit jamais attendre.
+    Serial.setTxTimeoutMs(0);
+#endif
     // Hors chemin audio : le moniteur série se reconnecte après le reset de la
     // carte. Sans cette attente, les premières lignes de l'auto-test sont perdues.
-    delay(1500);
+    delay(BOOT_SERIAL_DELAY_MS);
 
     led.begin();
     devices.begin();
@@ -690,6 +696,7 @@ void setup() {
               MQTT_USER, MQTT_PASSWORD);
 
     Serial.println("\n# --- assistant vocal, etapes 1 a 3 : audio + Wi-Fi + MQTT ---");
+    Serial.printf("# carte : %s\n", BOARD_NAME);
     Serial.printf("# format : %lu Hz, 16 bits, mono, chunk %lu ms = %u octets\n",
                   static_cast<unsigned long>(AUDIO_SAMPLE_RATE),
                   static_cast<unsigned long>(AUDIO_CHUNK_MS),

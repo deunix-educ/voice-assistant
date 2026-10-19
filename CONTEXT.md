@@ -50,7 +50,7 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (`0c7fae1`) | **oui (2026-10-18)** |
 | F4 | Serveur : droits par doigt, confirmation par le même doigt, pipeline sans VAD / diarisation / voix | **fait** | **oui (2026-10-18)** |
 | F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | **fait** | **oui (2026-10-18)** |
-| F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | à faire | — |
+| F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | **fait** | **oui (2026-10-19)** |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
@@ -237,6 +237,8 @@ firmware/src/FingerprintPort.h     interface « capteur » (testable avec un fau
 firmware/src/FingerprintSensor.*   UART2 vers le R503, anneau, touche, recherche   [F1-F2]
 firmware/src/FingerprintEnrollment.h  enregistrement d'un doigt (automate)         [F2, sans Arduino]
 firmware/src/FingerprintTrigger.h  doigt posé / reconnu / levé = session de parole [F3, sans Arduino]
+firmware/include/pins_esp32_wroom.h, pins_esp32_s3_mini.h  brochage et nom de chaque carte [F5]
+docs/wiring-esp32-s3.svg (+ .png)  schéma de câblage de la S3 Mini : rails, découplage, R503 [F5]
 server/voice_server/fingerprint_book.py  emplacement du capteur → nom (config.yaml) [F2]
 tools/finger.py                    make finger-list|enroll|delete, par MQTT        [F2]
 server/tests/test_fingerprint_packet.py, test_fingerprint_enrollment.py, test_fingerprint_trigger.py,
@@ -255,16 +257,64 @@ TLS (option de l'étape 15, non activée).
 1. Lire ce fichier, puis `README.md`.
 2. `make help` liste toutes les cibles.
 3. Vérifier l'étape en cours dans le tableau du §2, et **ne rien faire au-delà**.
-4. Contrôle rapide de l'environnement : `make test` (220 tests), `make lint`, `make fw-check`.
+4. Contrôle rapide de l'environnement : `make test` (272 tests), `make lint`, `make fw-check` (et `FW_ENV=esp32s3mini`).
 
-### État au 2026-10-18 (branche `fingerprint`)
+### État au 2026-10-19 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1, F2 et F3 validées**, **F4 et F4b validées**. Commits : `67bd4a4` (F1),
-  `19c935c` (F2) ; `0c7fae1` (F3), `6e432be` (F4), puis F4b (commit suivant). Reste : F5 (ESP32-S3 Mini) : la référence exacte de la carte est à demander à l'utilisateur.
-- `make test` : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS (RAM 36,9 %, Flash 33,2 %).
-- Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt
-  garde `10.42.0.1`) ; `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil).
+- Branche `fingerprint` : **F1 à F4b et F5 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
+  `254fc09` (F4b) ; F5 est le commit qui suit (`git log`). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
+  y compris « autre doigt = 3 éclairs rouges ».
+- `make test` : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
+  (36,8 % / 32,8 %).
+- Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt garde `10.42.0.1`) ;
+  `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil). Pour commiter `config.yaml`, ne jamais embarquer cette
+  adresse (index forcé par `git hash-object -w` + `git update-index --cacheinfo`).
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
+- Points ouverts : portail rendu plus robuste (hypothèse non prouvée d'un `WebServer` bloqué par une connexion inactive) et liste
+  des réseaux visibles dans le portail contre les fautes de frappe (proposé, sans réponse) ; schéma WROOM sans R503 ni LED de
+  démonstration (proposé, sans réponse) ; début de phrase parfois mal capté par Whisper (« est-elle » pour « allume ») ; signal Wi-Fi
+  de la S3 Mini moyen (−73 à −78 dBm) : la position de la carte compte ; schéma S3 non testé automatiquement contre
+  `pins_esp32_s3_mini.h`.
+
+Essais de F5 sur la carte (2026-10-19, câblée en entier d'après `wiring-esp32-s3.svg`) :
+
+- Carte neuve : flash vierge (`invalid header: 0xffffffff`, redémarrage en boucle toutes les ~2,8 s, port USB qui disparaît et
+  revient). `make fw-upload FW_ENV=esp32s3mini SERIAL_PORT=/dev/ttyACM0` **réussit** par l'USB natif (VID:PID 303a:1001,
+  `/dev/ttyACM0`, `root:dialout 660`, sans manœuvre BOOT/RESET) : 1 033 104 octets, hash vérifié, 12 s.
+- Démarrage lu sur le port : `# carte : ESP32-S3 Mini (esp32s3mini)` ; R503 : `poignee de main : ok`, 200 emplacements, 1 empreinte ;
+  micro : auto-test **CADRE 24 bits**, cadrage MSB moitié 1re, repos −37 dBFS continu / −60 dBFS variations, ligne SD pilotée,
+  `micro pret`. Bip, bouton et LED confirmés ensuite par l'utilisateur (voir plus bas).
+- **Wi-Fi : `NO_AP_FOUND` en boucle.** NVS vide sur cette carte, donc repli sur `secrets.h` (SSID d'un ancien réseau, broker
+  192.168.1.104:1883, anonyme) : ce SSID n'existe plus sur le réseau (le PC voit `BPI_R3-2G`, 2,4 GHz canal 6, WPA2 ; il est en
+  192.168.1.104 sur `eno1`). Il faut soit le portail (PTT tenu ~7 s à la mise sous tension → `VoiceAssist-Config`,
+  http://192.168.4.1), soit que l'utilisateur corrige `secrets.h` lui-même (**ne pas y toucher**).
+- Avertissements vus : `nvs_open failed: NOT_FOUND` (attendu, NVS vide) ; `HWCDC write failed due to waiting USB Host`
+  (probablement dû à ma lecture avec DTR bas, à revérifier avec `make fw-monitor`).
+- Lecture série sans moniteur : ouvrir `/dev/ttyACM0` en **abaissant DTR/RTS redémarre la carte** (`rst:0x15 USB_UART_CHIP_RESET`,
+  constaté deux fois, et il fait perdre le portail) ; en laissant pyserial à ses valeurs par défaut, pas de reset. `esptool.py` de
+  PlatformIO ne tourne pas hors du téléversement (module `rich_click` absent de `~/.platformio/penv`).
+- Portail de configuration (PTT tenu à la mise sous tension) : **fonctionne sur l'S3** (`portail force`, AP `VoiceAssist-Config`,
+  page servie, identifiants gardés en NVS, redémarrage `RTC_SW_CPU_RST`). Un premier essai a échoué sans cause établie (connexion
+  TCP acceptée, aucune réponse HTTP, pendant que j'ouvrais le port série) ; hypothèse non prouvée : serveur `WebServer` à un seul
+  client, bloqué jusqu'à 5 s par une connexion inactive d'un navigateur. À surveiller, pas de correctif écrit.
+- Bouton PTT câblé et fonctionnel : appui avec MQTT hors service → `session : MQTT non connecte, envoi par la liaison serie`, trames
+  `VSA1` sur l'USB (comportement attendu).
+- **SSID saisi dans le portail : `BPI3_R3-4G`, introuvable** (le PC voit `BPI_R3-2G` en 2,4 GHz canal 6 et `MirNet` en 5 GHz, même
+  routeur) : `NO_AP_FOUND` persiste, probablement une faute de frappe. Broker saisi `192.168.1.4:1883` : joignable depuis le PC.
+  Deuxième saisie `BPI_R3-4G` : même échec. **Troisième saisie `BPI_R3-2G` : Wi-Fi connecté (17,3 s, IP 192.168.1.16) et MQTT
+  connecté (connexion n°1, anonyme) sur 192.168.1.4:1883.** Signal **−87 dBm**, très faible (le PC voit le même point d'accès à
+  ~60 %) : connexion lente (17 s) et probablement fragile ; à améliorer (position de la carte, antenne, câble USB) avant les
+  essais de session. Aucun serveur `voice_server` ne tournait à ce moment-là.
+- **Essais de l'utilisateur, 2026-10-19 vers 10:40** : bip, LED d'état et LED de démonstration OK ; `make run` OK ; 13 sessions
+  ouvertes par le doigt (`Denis (empreinte 1)`, scores 64 à 137), commandes exécutées (« Allumer la lumière du salon » : autorisé,
+  `light on`), réponses correctes, premier son à ~171 ms, réponse prête en ~1,1 s. L'utilisateur a changé de point d'accès : signal
+  de −87 à −73/−78 dBm. Côté carte, `chunks perdus faute de place` suit le signal : 147 chunks (7 s) à 10:41:52 au plus mal, 0 depuis
+  que le signal est meilleur ; une transcription faussée (« Elle, elle, hier du salon ») avec 8 chunks perdus. Une relecture avec
+  un réamorçage (`marge mini 6 ms`). **Bouton PTT par MQTT OK (10:46-10:47)** : `session … ouverte par le bouton : personne
+  inconnue`, « allume la lumière » → REFUSE (« Je ne sais pas qui tient la carte… »), « quelle heure est-il » → « Il est 10 heures
+  46. ». Whisper a entendu « est-elle la lumière du salon ? » pour « allume… » 2 fois sur 5 (début de phrase mal capté, déjà vu sur
+  la WROOM : « Est-ce qu'il… »), repli correct (« Que dois-je faire avec la lumière ? ») ; point ouvert, pas propre à l'S3.
+  **Pas vu sur S3** : le doigt d'une autre personne (logique serveur, validée sur WROOM).
 
 ### État au 2026-10-06 au soir (fin de session)
 
@@ -1018,3 +1068,31 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   inutilisés, à supprimer par l'utilisateur), `server/.env` (HF_TOKEN reste, inutile).
 - **2026-10-18** — **F4b validée** par l'utilisateur et commitée à sa demande. Prochaine étape : F5 (ESP32-S3 Mini) ; avant
   de l'écrire, demander la référence exacte de la carte (brochage, USB natif ou pont série, PSRAM) : le brochage des deux cartes diffère.
+- **2026-10-18** — **F5 écrite** (branche `fingerprint`). Carte de l'utilisateur d'après sa photo et sa description : « ESP32-S3 Mini »,
+  18 broches, USB-C natif (pas de puce USB-série visible), flash 4 Mo, « 400 Ko de SRAM », boutons BOOT et RESET, LED RVB
+  étiquetée 48 ; PSRAM non précisée. Sérigraphie lue sur la photo (**à confirmer sur la carte**) : gauche TX RX 1 2 3 4 5 6 7, droite
+  5V GND 3V3 13 12 11 10 9 8. `config.h` : les broches passent dans `pins_esp32_wroom.h` (inchangé) et `pins_esp32_s3_mini.h`,
+  choisis par le drapeau `BOARD_ESP32_S3_MINI` ; `BOARD_NAME` affiché au démarrage ; `BOOT_SERIAL_DELAY_MS` (1,5 s / 3 s).
+  Brochage S3 : micro 5/6/7, ampli 13/12/11, bouton 10, LED d'état 9, LED de démonstration 8, R503 1 (RX) / 2 (TX) / 4 (touche) ;
+  évités : 0, 3, 45, 46 (démarrage), 19, 20 (USB), 26 à 37 (flash/PSRAM) ; TX/RX (43/44) laissés libres. La LED WS2812 de la
+  carte n'est pas pilotée (LED externe comme sur la WROOM). `platformio.ini` : `[env]` commun, `esp32dev` (défaut, `default_envs`)
+  et `esp32s3mini` (carte `esp32-s3-devkitc-1`, flash 4 Mo, QIO, USB-Serial/JTAG par `ARDUINO_USB_CDC_ON_BOOT=1`) ; Makefile :
+  `FW_ENV` pour `fw-build`, `fw-check`, `fw-upload`. `main.cpp` : `Serial.setTxTimeoutMs(0)` en USB natif (un port sans terminal
+  ne doit pas bloquer la boucle), cause de reset `ESP_RST_USB`. `make fw-check` : WROOM RAM 36,9 % / Flash 33,2 %, S3 RAM 36,8 % /
+  Flash 32,8 %, sans avertissement. `DEVICE_ID` reste `esp32-01` pour les deux cartes (une seule à la fois sur le broker).
+  **Non vérifié sur la carte** : lecture des étiquettes, téléversement par l'USB natif, comportement de l'I2S et de l'auto-test
+  du micro sur S3 (`AMP_FORMAT_PHILIPS`, cadrage du micro), signal de touche du R503 sur GPIO 4, PSRAM, tenue des 3,3 V.
+- **2026-10-18** — F5 : à la demande de l'utilisateur (« proposer un wiring esp32-s3 comme pour esp32 wroom »), ajout de
+  `docs/wiring-esp32-s3.svg` et `.png` (même style que `wiring.svg`, vue de la carte USB-C en bas pour que 3V3/GND/5V tombent
+  sur les rails sans croiser les signaux ; contient le R503 et les deux LED, absents du schéma WROOM). Rendu vérifié à l'œil
+  (Inkscape). Le schéma suit `pins_esp32_s3_mini.h` ; il n'est pas testé automatiquement.
+- **2026-10-18** — Préparation de la reprise du lendemain (demande : « reprise demain matin, préparer le terrain ») : contrôles
+  rejoués (272 tests, pyright 0 erreur, `fw-check` des deux cartes SUCCESS), outils et droits série vérifiés, serveur de
+  l'utilisateur identifié comme antérieur à F4 (à relancer), marche à suivre écrite au §5. Aucun code modifié, rien commité.
+- **2026-10-19** — F5 sur la carte (premier essai) : flash vierge repérée par la boucle de redémarrage, téléversement par l'USB
+  natif réussi, démarrage, R503 et auto-test du micro OK ; Wi-Fi à configurer (repli `secrets.h` sur un SSID disparu, portail ou
+  `secrets.h` à corriger par l'utilisateur). Détails au §5. F5 non validée, rien commité.
+- **2026-10-19** — **F5 validée** par l'utilisateur (« autre doigt == flash rouge => ok. On peut commiter ») après essai complet sur
+  l'ESP32-S3 Mini : téléversement par l'USB natif, portail, R503, micro, ampli, LED, Wi-Fi, MQTT, sessions au doigt et au bouton,
+  droits, doigt inconnu refusé. Commit de F5 : firmware (brochage par carte, deux environnements), Makefile (`FW_ENV`), schéma de
+  câblage S3, README, BROCHAGE, CONTEXT. `server/config.yaml` laissé de côté (seule différence : l'adresse locale de l'utilisateur).

@@ -10,6 +10,8 @@ PIP         := $(VENV)/bin/pip
 PIO_VENV    := .pio-venv
 PIO         := $(PIO_VENV)/bin/pio
 FW_DIR      := firmware
+# Carte du firmware : esp32dev (ESP32 WROOM, défaut) ou esp32s3mini (ESP32-S3 Mini, port /dev/ttyACM0).
+FW_ENV      ?= esp32dev
 SERIAL_PORT ?= /dev/ttyUSB0
 BAUD        ?= 921600
 OUT         ?= recordings/test.wav
@@ -51,7 +53,7 @@ help:  ## Affiche cette aide
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(firstword $(MAKEFILE_LIST)) \
 		| awk 'BEGIN {FS = ":.*?## "}; {printf "  \033[1m%-18s\033[0m %s\n", $$1, $$2}'
 	@echo ""
-	@echo "Variables : SERIAL_PORT=$(SERIAL_PORT)  BAUD=$(BAUD)  OUT=$(OUT)  TONE=$(TONE)  MQTT_HOST=$(MQTT_HOST)  JITTER=$(JITTER)"
+	@echo "Variables : FW_ENV=$(FW_ENV)  SERIAL_PORT=$(SERIAL_PORT)  BAUD=$(BAUD)  OUT=$(OUT)  TONE=$(TONE)  MQTT_HOST=$(MQTT_HOST)  JITTER=$(JITTER)"
 	@echo "            TEXT=\"$(TEXT)\""
 
 ## ------------------------------------------------------- installation système
@@ -229,22 +231,22 @@ pio-venv:  ## Installe PlatformIO dans son propre environnement virtuel
 	# click 8.3+ casse l'esptool 5.0 livré avec le core Arduino 3.x : on épingle 8.1.
 	$(PIO_VENV)/bin/pip install "click==8.1.8"
 
-fw-build:  ## Compile le firmware ESP32
+fw-build:  ## Compile le firmware de la carte FW_ENV (esp32dev ou esp32s3mini)
 	@test -x $(PIO) || { echo "PlatformIO absent : lancez 'make pio-venv'."; exit 1; }
-	$(PIO) run -d $(FW_DIR)
+	$(PIO) run -d $(FW_DIR) -e $(FW_ENV)
 
 fw-check:  ## Compile sans secrets.h personnel (secrets factices hors du dépôt)
 	@test -x $(PIO) || { echo "PlatformIO absent : lancez 'make pio-venv'."; exit 1; }
 	@if [ -f $(FW_DIR)/include/secrets.h ]; then \
-		echo "secrets.h present : compilation normale"; $(PIO) run -d $(FW_DIR); \
+		echo "secrets.h present : compilation normale"; $(PIO) run -d $(FW_DIR) -e $(FW_ENV); \
 	else \
 		tmp=$$(mktemp -d); cp $(FW_DIR)/include/secrets.h.example $$tmp/secrets.h; \
 		echo "secrets.h absent : secrets factices dans $$tmp (firmware/include/ n'est pas touche)"; \
-		PLATFORMIO_BUILD_FLAGS="-I$$tmp" $(PIO) run -d $(FW_DIR); status=$$?; rm -rf $$tmp; exit $$status; \
+		PLATFORMIO_BUILD_FLAGS="-I$$tmp" $(PIO) run -d $(FW_DIR) -e $(FW_ENV); status=$$?; rm -rf $$tmp; exit $$status; \
 	fi
 
-fw-upload:  ## Compile et téléverse le firmware
-	$(PIO) run -d $(FW_DIR) -t upload --upload-port $(SERIAL_PORT)
+fw-upload:  ## Compile et téléverse le firmware de la carte FW_ENV
+	$(PIO) run -d $(FW_DIR) -e $(FW_ENV) -t upload --upload-port $(SERIAL_PORT)
 
 fw-monitor:  ## Ouvre le moniteur série (Ctrl-C pour quitter)
 	$(PIO) device monitor -p $(SERIAL_PORT) -b $(BAUD)

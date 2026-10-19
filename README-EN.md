@@ -48,6 +48,7 @@ You put an enrolled finger on the sensor, speak, and lift it: the session lasts 
 | Item | Detail |
 |---|---|
 | ESP32-WROOM-32 | two I2S peripherals: I2S0 as receiver, I2S1 as transmitter |
+| ESP32-S3 Mini (`fingerprint` branch) | same firmware, other pinout: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.5 (in French), environment `esp32s3mini` |
 | INMP441 | I2S microphone, **3.3 V**, L/R pin to GND (left channel) |
 | MAX98357A | mono class-D amplifier, **5 V**, SD tied to VIN, GAIN left floating (9 dB) |
 | Button | push-to-talk between GPIO 4 and GND (internal pull-up) |
@@ -56,7 +57,7 @@ You put an enrolled finger on the sensor, speak, and lift it: the session lasts 
 
 ### Wiring
 
-**Full diagram: [docs/wiring.svg](docs/wiring.svg)** — detailed pinout, power
+**Full diagram: [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM) or **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, with the R503 sensor) — detailed pinout, power
 budget and multimeter checks (in French): **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
 
 ```
@@ -111,6 +112,8 @@ make pio-venv          # PlatformIO in its own venv — once only
 make fw-build          # compile without flashing
 make fw-upload SERIAL_PORT=/dev/ttyUSB0
 ```
+
+ESP32-S3 Mini: add `FW_ENV=esp32s3mini` and use the native USB port (`/dev/ttyACM0`), see step F5.
 
 **First boot — WiFi configuration portal**
 
@@ -299,7 +302,54 @@ make lint                                # pyright type check
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
 Current step: **done — steps 1 to 16 are validated** (`main` branch).
-`fingerprint` branch: F1 to F4 validated, F4b (removing the unused code) in progress, then F5 (ESP32-S3 Mini).
+`fingerprint` branch: F1 to F4b and F5 (ESP32-S3 Mini) validated.
+
+### `fingerprint` branch — step F5: the ESP32-S3 Mini board
+
+The same firmware runs on two boards: the **ESP32 WROOM** (environment `esp32dev`, the default) and the **ESP32-S3 Mini**
+(18 pins, USB-C, 4 MB flash, environment `esp32s3mini`). Only the pinout changes
+([firmware/include/pins_esp32_s3_mini.h](firmware/include/pins_esp32_s3_mini.h), wiring in §1.5 of
+[docs/BROCHAGE.md](docs/BROCHAGE.md), in French) and the serial monitor: the USB-C port talks to the chip directly, with no
+USB-serial chip.
+
+```bash
+make fw-check  FW_ENV=esp32s3mini                              # build
+make fw-upload FW_ENV=esp32s3mini SERIAL_PORT=/dev/ttyACM0     # flash
+make fw-monitor SERIAL_PORT=/dev/ttyACM0                       # monitor (a "baud rate" means nothing over native USB)
+```
+
+Without `FW_ENV`, every `fw-*` target still builds the WROOM. The board prints `# carte : ESP32-S3 Mini (esp32s3mini)` at
+startup: if you read `ESP32 WROOM`, the wrong environment was flashed.
+
+Wire and try **in stages**, with the board unplugged from USB for each addition:
+
+1. Board alone: `# carte : …`, then the microphone self-test fails (no microphone): that is normal.
+2. R503 sensor on GPIO 1, 2, 4: `poignee de main : ok`, `200 empreintes`, and the ring follows the finger.
+3. INMP441 microphone (GPIO 5, 6, 7): the self-test passes, `micro pret`.
+4. MAX98357A amplifier (GPIO 13, 12, 11): the 440 Hz startup beep.
+5. Button (GPIO 10), then `make run`: a session by the button, then by an enrolled finger (F3).
+
+A new board has **no network configuration**: it tries `secrets.h` (if it exists), otherwise the portal is needed. Hold PTT
+for about 10 s at power-up (3 s for the board to wait, then 3 s of holding): the board prints `portail force`, the status LED
+blinks fast, and the `VoiceAssist-Config` Wi-Fi gives access to http://192.168.4.1. Type the network name **exactly** (the
+board only speaks **2.4 GHz**): a wrong name gives `NO_AP_FOUND` in a loop.
+
+The board identifier stays `esp32-01` for both boards: connect only **one** to the broker at a time (two boards with the same
+identifier kick each other out). Fingerprints are stored **in the sensor**: an R503 moved from one board to the other keeps its
+fingers.
+
+| Symptom | Likely cause |
+|---|---|
+| `/dev/ttyUSB0` missing | native USB is `/dev/ttyACM0` (group `dialout`) |
+| the upload does not start | hold BOOT, press RESET, release RESET then BOOT, retry |
+| nothing printed at startup | monitor opened too late: the port disappears at every reset; the board waits 3 s, then drops messages if no terminal is open |
+| sensor `ABSENT` | yellow and brown wires on GPIO 1 and 2, swapped; 3.3 V |
+| board no longer boots | a wire on GPIO 0, 3, 45 or 46 (boot pins) |
+| distorted sound or noise | Philips framing (`AMP_FORMAT_PHILIPS`) is verified on the S3 (clean beep); otherwise try it set to `false` in `config.h` |
+| reboot loop, `invalid header: 0xffffffff` | blank flash (new board): flash the firmware, this is normal before that |
+| `NO_AP_FOUND` in a loop | network name mistyped in the portal, or a 5 GHz-only network |
+| `chunks perdus faute de place` in the server log, misheard words | Wi-Fi signal too weak (measured: −87 dBm = 147 lost chunks, −73 dBm = none): move the board closer to the access point |
+| the board reboots when the serial port is opened (home-made tool) | DTR/RTS lowered on open: leave the default values |
 
 ### `fingerprint` branch — step F4: rights follow the finger
 
