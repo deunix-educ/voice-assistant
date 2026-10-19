@@ -6,6 +6,8 @@ l'un l'autre, sans micro ni haut-parleur.
 
 from __future__ import annotations
 
+import difflib
+import re
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +16,7 @@ import pytest
 from voice_server.audio_resampler import AudioResampler, peak_dbfs
 from voice_server.settings import Settings, load_settings
 from voice_server.speech_to_text import SpeechToText
+from voice_server.text_normalize import normalize
 from voice_server.text_to_speech import TextToSpeech
 
 SETTINGS: Settings = load_settings(Path(__file__).resolve().parents[1] / "config.yaml")
@@ -22,6 +25,14 @@ pytestmark = pytest.mark.skipif(
     not (SETTINGS.stt.model_dir / "model.bin").exists() or not SETTINGS.tts.model_path.exists(),
     reason="modeles absents : lancez 'make models'",
 )
+
+
+def similarity(expected: str, heard: str) -> float:
+    """Ressemblance de 0 à 1 entre deux phrases, sans tenir compte de la casse, des accents ni de la ponctuation."""
+    def clean(text: str) -> str:
+        return " ".join(re.sub(r"[^a-z0-9 ]+", " ", normalize(text)).split())
+
+    return difflib.SequenceMatcher(None, clean(expected), clean(heard)).ratio()
 
 
 @pytest.fixture(scope="module")
@@ -63,7 +74,11 @@ def test_speech_between_silences_is_transcribed_without_vad(tts: TextToSpeech, s
 
     transcript = stt.transcribe(silence + tts.synthesize("Quelle heure est-il ?").pcm + silence)
 
-    assert "heure" in transcript.text.lower()
+    # Piper varie à chaque synthèse (bruit aléatoire) et Whisper entend parfois « Quel aurait-il ? » pour « Quelle
+    # heure est-il ? » : 5 fois sur 100 mesurées, d'où l'ancien « "heure" dans le texte », instable. On exige une phrase
+    # proche, pas le mot exact. Mesuré sur 100 synthèses : jamais sous 0,65 ; un texte vide, un sous-titre inventé
+    # (≤ 0,27) ou une autre phrase (0,44) tombent bien sous le seuil.
+    assert similarity("Quelle heure est-il ?", transcript.text) >= 0.5, transcript.text
 
 
 def test_repeated_answer_comes_from_the_cache(tts: TextToSpeech) -> None:

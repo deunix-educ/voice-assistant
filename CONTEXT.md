@@ -269,8 +269,8 @@ TLS (option de l'étape 15, non activée).
   `254fc09` (F4b), `dd268d2` (F5). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
   y compris « autre doigt = 3 éclairs rouges ».
 - F6 (configuration en plusieurs fichiers) **validée par l'utilisateur le 2026-10-19** ; `make test` : 300 tests, pyright 0 erreur ;
-  `test_speech_between_silences_is_transcribed_without_vad` est **instable** (Piper varie d'un essai à l'autre : « Quel aurait-il ? »
-  au lieu de « heure », ~2 échecs sur 8, sans rapport avec F6) ; à fiabiliser.
+  `test_speech_between_silences_is_transcribed_without_vad` était **instable** (voir le journal du 2026-10-19, corrigé : critère par
+  similarité).
 - Avant F6 : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
   (36,8 % / 32,8 %).
 - Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt garde `10.42.0.1`) ;
@@ -1121,3 +1121,11 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   3 tests qui réécrivaient `config.yaml` adaptés. 300 tests, pyright 0 erreur. **Non validée, non commitée.**
 - **2026-10-19** — **F6 validée** par l'utilisateur (« Je valide F6 ») et commitée ; il demande ensuite de regarder le test instable
   `test_speech_between_silences_is_transcribed_without_vad`.
+- **2026-10-19** — **Test instable corrigé** (`test_speech_between_silences_is_transcribed_without_vad`, demande : « regarder test
+  instable »). Mesures (aucun son joué, Piper puis Whisper) : Piper donne une synthèse **différente à chaque appel** (40 sur 40) et
+  Whisper entend « Quel aurait-il ? » / « Quel auraient-ils ? » / « Qu'alors est-il ? » pour « Quelle heure est-il ? » dans **5 cas sur
+  100** ; les silences autour n'y sont pour rien (sans silence : 4 sur 40). L'ancien critère (« heure » dans le texte) échouait donc
+  ~5 fois sur 100 (2 sur 8 vus en `make test`). Nouveau critère : ressemblance (`difflib`, sans casse, accents ni ponctuation) ≥ 0,5
+  avec la phrase dite ; mesuré sur 100 synthèses : jamais sous 0,65 ; texte vide 0, sous-titre inventé ≤ 0,27, autre phrase 0,44 :
+  refusés. 12 lancements de suite sans échec. `test_round_trip` (« appelles ») est stable : 40 sur 40. Pas de changement de code de
+  production.
