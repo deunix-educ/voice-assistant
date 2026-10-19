@@ -159,6 +159,9 @@ def main(argv: list[str]) -> int:
     except (ValueError, OSError, yaml.YAMLError) as error:
         # Le journal n'est pas encore réglé (il dépend de la configuration) : message direct, sans trace d'appels.
         print(f"configuration invalide : {error}", file=sys.stderr)
+        example = args.config.with_name(f"{args.config.stem}.example{args.config.suffix}")
+        if isinstance(error, FileNotFoundError) and not args.config.exists() and example.exists():
+            print(f"{args.config} n'existe pas : « make config » le crée depuis {example.name}", file=sys.stderr)
         return EXIT_SETUP
     setup_logging(settings)
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)  # une ligne par transcription sinon

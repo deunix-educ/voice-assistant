@@ -26,7 +26,7 @@ from voice_server.machine_control import (
 from voice_server.mqtt_link import MqttLink
 from voice_server.settings import MachinesSettings, load_settings
 
-SETTINGS = load_settings(Path(__file__).resolve().parents[1] / "config.yaml")
+SETTINGS = load_settings(Path(__file__).resolve().parents[1] / "config.example.yaml")
 MACHINES = SETTINGS.machines
 ONLINE = AgentStatus(online=True, actions=("lock", "reboot", "shutdown"))
 ONLINE_PAYLOAD = json.dumps({"status": "online", "actions": ["lock", "reboot", "shutdown"]}).encode()

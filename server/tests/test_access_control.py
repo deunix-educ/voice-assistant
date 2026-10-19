@@ -159,8 +159,8 @@ def test_other_request_drops_the_pending_one(policy: AccessPolicy) -> None:
 
 
 def test_project_config_is_valid() -> None:
-    """Le config.yaml du dépôt se charge, et ses règles s'appliquent vraiment (profil standard)."""
-    settings = load_settings(Path(__file__).resolve().parents[1] / "config.yaml")
+    """Le modèle config.example.yaml se charge, et ses règles s'appliquent vraiment (profil standard)."""
+    settings = load_settings(Path(__file__).resolve().parents[1] / "config.example.yaml")
     policy = AccessPolicy(settings.access, settings.home, settings.machines)
     for action in ("on", "off"):  # on/off nus en YAML = booléens : Pierre refusé à l'essai réel
         assert policy.check(DeviceCommand(action, "light", "salon"), "Pierre").allowed

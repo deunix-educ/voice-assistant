@@ -18,7 +18,7 @@ if str(TOOLS_DIR) not in sys.path:
 
 from finger import command_delete, command_enroll, command_list, enrollment_message  # noqa: E402
 
-CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config.example.yaml"
 BOOK = FingerprintBook(FingerprintSettings(users={1: "Denis", 2: "Denis", 5: "Jessica"}))
 
 
@@ -64,7 +64,7 @@ def test_free_id_skips_taken_and_named_slots_and_keeps_zero_free() -> None:
 
 
 def test_project_config_loads() -> None:
-    """Le config.yaml du dépôt se charge ; son contenu appartient à l'utilisateur (ses doigts)."""
+    """Le modèle config.example.yaml se charge (la copie locale server/config.yaml, elle, appartient à l'utilisateur)."""
     users = load_settings(CONFIG).fingerprint.users
     assert all(isinstance(number, int) and number >= 0 and name for number, name in users.items())
 

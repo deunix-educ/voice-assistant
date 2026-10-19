@@ -19,7 +19,7 @@ from voice_server.speech_to_text import SpeechToText
 from voice_server.text_normalize import normalize
 from voice_server.text_to_speech import TextToSpeech
 
-SETTINGS: Settings = load_settings(Path(__file__).resolve().parents[1] / "config.yaml")
+SETTINGS: Settings = load_settings(Path(__file__).resolve().parents[1] / "config.example.yaml")
 
 pytestmark = pytest.mark.skipif(
     not (SETTINGS.stt.model_dir / "model.bin").exists() or not SETTINGS.tts.model_path.exists(),

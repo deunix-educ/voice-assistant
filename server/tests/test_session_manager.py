@@ -170,8 +170,8 @@ def test_split_topic(topic: str, expected: tuple[str, str] | None) -> None:
 
 
 def test_project_config_loads() -> None:
-    """Le config.yaml du dépôt se charge et reste cohérent avec le firmware."""
-    settings = load_settings(Path(__file__).resolve().parents[1] / "config.yaml")
+    """Le modèle config.example.yaml se charge et reste cohérent avec le firmware."""
+    settings = load_settings(Path(__file__).resolve().parents[1] / "config.example.yaml")
 
     assert settings.audio.bytes_per_second == 32000
     assert settings.mqtt.topic_prefix == "voice"

@@ -103,6 +103,6 @@ def test_assistant_prefers_home_commands_then_chat() -> None:
 
 
 def test_project_config_rooms_and_boards() -> None:
-    """Le config.yaml du dépôt déclare la pièce de la carte parmi les pièces connues."""
-    home = load_settings(Path(__file__).resolve().parents[1] / "config.yaml").home
+    """Le modèle config.example.yaml déclare la pièce de la carte parmi les pièces connues."""
+    home = load_settings(Path(__file__).resolve().parents[1] / "config.example.yaml").home
     assert home.boards["esp32-01"] in home.rooms

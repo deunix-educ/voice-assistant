@@ -207,7 +207,7 @@ make run
 | Fichier | Contenu |
 |---|---|
 | `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
-| `server/config.yaml` | réglages généraux (audio, MQTT, voix, journal) et liste des fichiers inclus |
+| `server/config.yaml` | **votre copie locale** (ignorée par git, créée par `make install` depuis `config.example.yaml`) : réglages généraux (audio, MQTT, voix, journal) et liste des fichiers inclus |
 | `server/conf/home.yaml` | pièces et pièce de chaque carte |
 | `server/conf/machines.yaml` | machines Linux du réseau et leurs actions |
 | `server/conf/access.yaml` | droits par personne (`access`) et propriétaire de chaque doigt (`fingerprint`) |
@@ -307,7 +307,36 @@ make lint                           # typage pyright
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées** (branche `main`).
-Branche `fingerprint` : F1 à F4b, F5 (ESP32-S3 Mini), F6 (configuration en plusieurs fichiers) et F7 (serveur sous systemd) validées.
+Branche `fingerprint` : F1 à F4b, F5 (ESP32-S3 Mini), F6 (configuration en plusieurs fichiers), F7 (serveur sous systemd) et F8 (modèle de configuration versionné, copie locale ignorée) validées 
+
+### Branche `fingerprint` — étape F8 : un modèle de configuration versionné, une copie locale ignorée
+
+`server/config.example.yaml` est le **modèle** (versionné) ; `server/config.yaml` est **votre copie** (ignorée par git) : le serveur,
+les outils et le service lisent celle-là. Plus de risque de commiter votre adresse de broker, ni de la perdre à un
+« annuler les modifications ».
+
+```bash
+make install        # crée server/config.yaml depuis le modèle s'il manque (comme server/.env), sans jamais l'écraser
+make config         # la même chose, seule
+make config-diff    # ce qui diffère entre le modèle et votre copie (à relire quand le modèle change)
+```
+
+| Point | Détail |
+|---|---|
+| clone neuf | `make install` crée `server/config.yaml` ; **vérifiez `mqtt.host`** (le modèle vise `10.42.0.1`, le Raspberry Pi) |
+| le modèle change | votre copie n'est pas touchée : `make config-diff`, puis reportez à la main les nouvelles clés |
+| `server/conf/*.yaml` | restent versionnés (valeurs de départ) ; seul `config.yaml` est local |
+| `make run`, service | un `config.yaml` absent donne `configuration invalide` et « `make config` le crée depuis config.example.yaml » |
+| tests | ils lisent le modèle : leurs résultats ne dépendent pas de votre copie |
+
+**Autre machine qui a déjà ce dépôt** (le Raspberry Pi, un second PC) : au premier `git pull` qui apporte cette étape, git retire
+le `server/config.yaml` suivi jusque-là. Copiez-le avant (`cp server/config.yaml ~/config.yaml.sauvegarde`) puis remettez-le
+après ; sans modification locale, `make config` recrée un fichier depuis le modèle.
+
+1. `git pull` n'a rien à faire chez vous : votre `server/config.yaml` reste (même contenu, `192.168.1.4`), et `git status` ne le
+   montre plus.
+2. `make config` : « existe deja : rien a faire » ; `make config-diff` : montre seulement vos différences (adresse du broker…).
+3. Clone neuf (dossier temporaire) : `make config` crée `server/config.yaml` depuis le modèle.
 
 ### Branche `fingerprint` — étape F7 : le serveur démarre avec la machine (systemd)
 
@@ -333,7 +362,7 @@ make server-uninstall  # retire le service (le dépôt et les enregistrements re
 | `make run` | refusé tant que le service tourne : deux serveurs de même identifiant MQTT se chassent du broker en boucle |
 | secrets | `.env` reste dans `server/`, lu par le serveur ; rien n'est copié dans l'unité ni dans le journal |
 
-Le service lit `server/config.yaml` **tel qu'il est au démarrage** : vérifiez `mqtt.host` avant d'installer (celui du dépôt est
+Le service lit `server/config.yaml` **tel qu'il est au démarrage** : vérifiez `mqtt.host` avant d'installer (celui du modèle est
 `10.42.0.1`, le Raspberry Pi).
 
 1. Arrêtez le serveur lancé à la main (Ctrl-C dans le terminal de `make run`), puis `make server-install` : `active (running)`.

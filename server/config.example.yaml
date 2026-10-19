@@ -1,4 +1,7 @@
-# Configuration du serveur vocal.
+# Configuration du serveur vocal : MODÈLE versionné (config.example.yaml).
+# « make config » (lancé aussi par « make install ») en fait server/config.yaml, ignoré par git : c'est ce fichier
+# que le serveur lit et que vous adaptez (mqtt.host, doigts, droits…). Il n'est jamais écrasé ; « make config-diff »
+# montre ce qui diffère de ce modèle quand celui-ci change.
 # Les valeurs sensibles (mots de passe, jetons) vont dans .env, jamais ici.
 # Les sections marquées « étape N » ne sont lues qu'à partir de cette étape.
 # Branche fingerprint : pas de VAD, de diarisation, de voix ni de mot de réveil (étapes F3 à F4b).

@@ -15,6 +15,9 @@ mosquitto/passwd
 agent/agent.yaml
 mosquitto/*.pwd
 
+# --- Configuration locale du serveur (modèle versionné : server/config.example.yaml, « make config ») ---
+server/config.yaml
+
 # --- Données personnelles (voix = donnée biométrique) ---
 docs/test-suivi-perso.txt
 recordings/

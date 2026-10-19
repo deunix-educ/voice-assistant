@@ -15,7 +15,7 @@ from voice_server.__main__ import setup_logging
 from voice_server.mqtt_link import presence_topic, refusal_hint, split_topic
 from voice_server.settings import load_settings
 
-CONFIG = Path(__file__).resolve().parents[1] / "config.yaml"
+CONFIG = Path(__file__).resolve().parents[1] / "config.example.yaml"
 
 
 def test_presence_topic_is_not_taken_for_a_board() -> None:

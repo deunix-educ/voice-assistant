@@ -11,6 +11,9 @@ PIO_VENV    := .pio-venv
 PIO         := $(PIO_VENV)/bin/pio
 FW_DIR      := firmware
 # Service systemd du serveur (étape F7) : compte qui le fait tourner, dossier server/ de ce dépôt.
+# Configuration du serveur : le modèle est versionné, la copie locale (ignorée par git) est celle que le serveur lit.
+CONFIG_FILE    ?= server/config.yaml
+CONFIG_EXAMPLE ?= server/config.example.yaml
 SERVICE      := voice-server
 SERVICE_USER ?= $(shell id -un)
 SERVER_DIR   = $(realpath server)
@@ -28,9 +31,9 @@ JITTER      ?= 0
 VOICE       ?= fr_FR-tom-medium
 SPEAKER     ?=
 SAY_OUT     ?= recordings/voix-test/phrase.wav
-# Adresse du broker : UN seul réglage, mqtt.host de server/config.yaml, relu ici pour les
+# Adresse du broker : UN seul réglage, mqtt.host de server/config.yaml (à défaut, du modèle), relu ici pour les
 # cibles mqtt-* (surcharge ponctuelle : make mqtt-watch MQTT_HOST=...).
-MQTT_HOST   ?= $(shell awk '/^mqtt:/{m=1;next} m && $$1=="host:"{print $$2; exit}' server/config.yaml)
+MQTT_HOST   ?= $(shell awk '/^mqtt:/{m=1;next} m && $$1=="host:"{print $$2; exit}' $(if $(wildcard $(CONFIG_FILE)),$(CONFIG_FILE),$(CONFIG_EXAMPLE)))
 MSG         ?= {"cmd":"ping"}
 MOSQ_DIR    ?= $(HOME)/srv/mosquitto
 MOSQ_COMPOSE ?= $(HOME)/srv/docker-compose.mosquitto.yml
@@ -47,7 +50,7 @@ MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de s
 
 .DEFAULT_GOAL := help
 .PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech models \
-        say latency finger-list finger-enroll finger-delete speech-check transcribe run server-guard server-unit server-install server-uninstall server-status server-log test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
+        say latency finger-list finger-enroll finger-delete speech-check transcribe run config config-diff server-guard server-unit server-install server-uninstall server-status server-log test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
         fw-monitor clean
 
 ## ------------------------------------------------------------------ aide
@@ -143,7 +146,7 @@ venv:  ## Crée l'environnement virtuel Python
 	python3 -m venv $(VENV)
 	$(PIP) install --upgrade pip setuptools wheel
 
-install: venv  ## Installe le serveur Python (dépendances de base)
+install: venv config  ## Installe le serveur Python (dépendances de base) et crée server/config.yaml s'il manque
 	$(PIP) install -e server
 	@test -f server/.env || { cp server/.env.example server/.env; echo "server/.env créé depuis .env.example — renseigner MQTT_USERNAME/PASSWORD."; }
 
@@ -152,6 +155,13 @@ install-dev: install pio-venv  ## Installe en plus les outils de développement 
 
 install-speech: install  ## Installe faster-whisper et Piper (étape 6)
 	$(PIP) install -e "server[speech]"
+
+config:  ## Crée server/config.yaml depuis config.example.yaml, sans jamais écraser un fichier existant
+	@if [ -f $(CONFIG_FILE) ]; then echo "$(CONFIG_FILE) existe deja : rien a faire (make config-diff le compare au modele)."; \
+	else cp $(CONFIG_EXAMPLE) $(CONFIG_FILE) && echo "$(CONFIG_FILE) cree depuis $(notdir $(CONFIG_EXAMPLE)) : verifiez mqtt.host."; fi
+
+config-diff:  ## Montre ce qui diffère entre le modèle config.example.yaml et votre server/config.yaml
+	@diff -u $(CONFIG_EXAMPLE) $(CONFIG_FILE) || true
 
 models:  ## Télécharge Whisper et la voix Piper de config.yaml dans server/models
 	$(PY) tools/download_models.py
@@ -200,6 +210,7 @@ server-install:  ## Installe le serveur comme service (sudo) : démarre au boot,
 	@if pgrep -f '[v]oice_server --config' >/dev/null; then \
 		echo "Un serveur tourne deja (make run ?) : arretez-le (Ctrl-C) avant, sinon les deux se chassent du broker."; exit 1; fi
 	@test -x $(SERVER_DIR)/.venv/bin/python || { echo "server/.venv absent : make install"; exit 1; }
+	@test -f $(CONFIG_FILE) || { echo "$(CONFIG_FILE) absent : make config, puis verifiez mqtt.host"; exit 1; }
 	$(RENDER_UNIT) | sudo tee /etc/systemd/system/$(SERVICE).service >/dev/null
 	sudo systemctl daemon-reload
 	sudo systemctl enable --now $(SERVICE)

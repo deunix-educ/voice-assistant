@@ -181,24 +181,24 @@ def test_included_file_must_be_a_mapping(tmp_path: Path) -> None:
         read_config(config)
 
 
-# --------------------------------------------------------------------------- le config.yaml du dépôt
+# --------------------------------------------------------------------------- le modèle du dépôt
 
 def test_project_config_takes_its_sections_from_conf() -> None:
     """Les sections découpées arrivent bien de server/conf, et « include » ne reste pas dans le résultat."""
-    config = read_config(SERVER_DIR / "config.yaml")
+    config = read_config(SERVER_DIR / "config.example.yaml")
     assert "include" not in config
     for section in ("audio", "mqtt", "stt", "home", "machines", "access", "fingerprint"):
         assert section in config, section
-    raw = (SERVER_DIR / "config.yaml").read_text(encoding="utf-8")
+    raw = (SERVER_DIR / "config.example.yaml").read_text(encoding="utf-8")
     for moved in ("home", "machines", "access", "fingerprint"):
         assert f"\n{moved}:" not in raw, f"{moved} devrait vivre dans conf/"
 
 
 def test_mqtt_host_stays_readable_by_the_makefile() -> None:
-    """Le Makefile lit mqtt.host dans config.yaml avec awk : la section mqtt doit y rester."""
+    """Le Makefile lit mqtt.host dans config.yaml (à défaut, dans le modèle) avec awk : la section mqtt doit y rester."""
     inside = False
     host = ""
-    for line in (SERVER_DIR / "config.yaml").read_text(encoding="utf-8").splitlines():
+    for line in (SERVER_DIR / "config.example.yaml").read_text(encoding="utf-8").splitlines():
         if line.startswith("mqtt:"):
             inside = True
             continue

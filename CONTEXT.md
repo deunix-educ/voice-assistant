@@ -53,7 +53,8 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | **fait** | **oui (2026-10-18)** |
 | F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | **fait** (`dd268d2`) | **oui (2026-10-19)** |
 | F6 | Configuration en plusieurs fichiers : `include` (motifs admis), `server/conf/` | **fait** (`0d00b50`) | **oui (2026-10-19)** |
-| F7 | Le serveur démarre avec la machine : service systemd (`make server-install`) | **fait** | **oui (2026-10-19)** |
+| F7 | Le serveur démarre avec la machine : service systemd (`make server-install`) | **fait** (`311fde1`) | **oui (2026-10-19)** |
+| F8 | `server/config.example.yaml` versionné, `server/config.yaml` ignoré par git, créé par `make install` / `make config` | **fait** | **oui (2026-10-19)** |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
@@ -206,6 +207,8 @@ server/voice_server/settings.py    config.yaml (+ include, F6) + .env           
 server/conf/home.yaml, machines.yaml, access.yaml  sections home / machines / access + fingerprint [F6]
 server/tests/conftest.py, test_config_include.py   copie de la config, 28 tests de l'inclusion [F6]
 server/voice-server.service        modèle d'unité systemd (@USER@, @SERVER_DIR@) [F7]
+server/config.example.yaml         modèle de configuration versionné ; config.yaml = copie locale ignorée [F8]
+server/tests/test_config_example.py  modèle, .gitignore, make config / config-diff, message d'un config.yaml absent [F8]
 server/tests/test_service_unit.py  rendu de l'unité, systemd-analyze, garde de « make run » [F7]
 server/voice_server/mqtt_link.py   paho-mqtt 2.x, abonnement voice/+/...        [étape 4]
 server/voice_server/audio_buffer.py  PCM borné, niveaux, écriture WAV           [étape 4]
@@ -269,7 +272,7 @@ TLS (option de l'étape 15, non activée).
 
 ### État au 2026-10-19 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1 à F4b, F5, F6 et F7 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
+- Branche `fingerprint` : **F1 à F4b, F5, F6, F7 et F8 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
   `254fc09` (F4b), `dd268d2` (F5). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
   y compris « autre doigt = 3 éclairs rouges ».
 - F6 (configuration en plusieurs fichiers) **validée par l'utilisateur le 2026-10-19** ; `make test` : 300 tests, pyright 0 erreur ;
@@ -277,9 +280,9 @@ TLS (option de l'étape 15, non activée).
   similarité).
 - Avant F6 : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
   (36,8 % / 32,8 %).
-- Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt garde `10.42.0.1`) ;
-  `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil). Pour commiter `config.yaml`, ne jamais embarquer cette
-  adresse (index forcé par `git hash-object -w` + `git update-index --cacheinfo`).
+- Depuis F8, `server/config.yaml` n'est plus suivi par git : c'est la copie locale de l'utilisateur (`mqtt.host: 192.168.1.4`),
+  créée depuis `server/config.example.yaml` (modèle, `mqtt.host: 10.42.0.1`) par `make install` / `make config`. Plus besoin de
+  l'index forcé (`git hash-object` + `update-index`) : le modèle se commite normalement. `wake.enabled: false` sur la branche.
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
 - Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration) ;
   **pas de liste de réseaux** dans le portail (le nom se recopie à l'identique).
@@ -1152,3 +1155,15 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   travail de `server/config.yaml` porte de nouveau `192.168.1.4` (modification locale, non commitée) ; le dépôt garde `10.42.0.1`.
   `prompt-assistant-vocal-esp32.md` (fichier suivi par git) a été **supprimé volontairement par l'utilisateur** ; sa suppression
   n'est pas dans le commit de F7 (reste dans l'historique : `git show d20976f:prompt-assistant-vocal-esp32.md`).
+- **2026-10-19** — **F8 écrite** (demande : « faire un config.example.yaml et mettre config.yaml dans .gitignore. Faire un cp
+  config.example vers config à l'install »). `server/config.example.yaml` = version du dépôt (`mqtt.host: 10.42.0.1`) + en-tête qui
+  explique le mécanisme ; `.gitignore` : `server/config.yaml` ; `Makefile` : `config` (copie sans jamais écraser), `config-diff`,
+  `install: venv config`, `MQTT_HOST` lu dans `config.yaml` ou, à défaut, dans le modèle, `server-install` exige `config.yaml` ;
+  `__main__.py` : un `config.yaml` absent dit « make config le crée depuis config.example.yaml ». **Les tests lisent le modèle**
+  (7 fichiers de tests + `conftest.py`) : ils ne dépendent plus de la copie locale et passent sur un clone neuf. Le fichier local de
+  l'utilisateur n'est pas touché (`git rm --cached` : il reste sur le disque, ignoré). `server/conf/*.yaml` restent versionnés.
+  **Autres machines** : au premier `git pull` de cette étape, git y supprime le `config.yaml` suivi jusque-là (à sauvegarder avant).
+- **2026-10-19** — **F8 validée** par l'utilisateur (« uniquement commiter F8 et pousser ») : le commit retire `server/config.yaml` de
+  l'index (`git rm --cached`, le fichier local reste sur le disque), ajoute `config.example.yaml`, `.gitignore`, le Makefile, les
+  tests et la documentation. **Décision** : `server/conf/*.yaml` restent versionnés (pas de modèle `*.example.yaml` pour eux) ; à
+  reprendre si l'utilisateur enregistre d'autres personnes (`conf/access.yaml` porte les noms).

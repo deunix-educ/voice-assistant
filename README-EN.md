@@ -205,7 +205,7 @@ make run
 | File | Contents |
 |---|---|
 | `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
-| `server/config.yaml` | general settings (audio, MQTT, voices, log) and the list of included files |
+| `server/config.yaml` | **your local copy** (ignored by git, created by `make install` from `config.example.yaml`): general settings (audio, MQTT, voices, log) and the list of included files |
 | `server/conf/home.yaml` | rooms and the room of each board |
 | `server/conf/machines.yaml` | Linux machines on the network and their actions |
 | `server/conf/access.yaml` | rights per person (`access`) and the owner of each finger (`fingerprint`) |
@@ -305,7 +305,36 @@ make lint                                # pyright type check
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
 Current step: **done — steps 1 to 16 are validated** (`main` branch).
-`fingerprint` branch: F1 to F4b, F5 (ESP32-S3 Mini), F6 (configuration in several files) and F7 (server under systemd) validated.
+`fingerprint` branch: F1 to F4b, F5 (ESP32-S3 Mini), F6 (configuration in several files), F7 (server under systemd) and F8 (versioned configuration template, ignored local copy) validated
+
+### `fingerprint` branch — step F8: a versioned configuration template, an ignored local copy
+
+`server/config.example.yaml` is the **template** (versioned); `server/config.yaml` is **your copy** (ignored by git): the
+server, the tools and the service read that one. No more risk of committing your broker address, or of losing it to a
+"discard changes".
+
+```bash
+make install        # creates server/config.yaml from the template if missing (like server/.env), never overwriting it
+make config         # the same, alone
+make config-diff    # what differs between the template and your copy (re-read it when the template changes)
+```
+
+| Point | Detail |
+|---|---|
+| fresh clone | `make install` creates `server/config.yaml`; **check `mqtt.host`** (the template points at `10.42.0.1`, the Raspberry Pi) |
+| the template changes | your copy is not touched: `make config-diff`, then carry the new keys over by hand |
+| `server/conf/*.yaml` | stay versioned (starting values); only `config.yaml` is local |
+| `make run`, service | a missing `config.yaml` gives `configuration invalide` and "`make config` creates it from config.example.yaml" |
+| tests | they read the template: their results do not depend on your copy |
+
+**Another machine that already has this repository** (the Raspberry Pi, a second PC): on the first `git pull` that brings this
+step, git removes the `server/config.yaml` it used to track. Copy it before (`cp server/config.yaml ~/config.yaml.backup`)
+and put it back afterwards; without local changes, `make config` recreates a file from the template.
+
+1. `git pull` has nothing to do on your machine: your `server/config.yaml` stays (same content, `192.168.1.4`), and `git status`
+   no longer shows it.
+2. `make config`: "existe deja: rien a faire"; `make config-diff`: shows only your differences (broker address…).
+3. Fresh clone (temporary folder): `make config` creates `server/config.yaml` from the template.
 
 ### `fingerprint` branch — step F7: the server starts with the machine (systemd)
 
@@ -331,7 +360,7 @@ make server-uninstall  # removes the service (the repository and the recordings 
 | `make run` | refused while the service runs: two servers with the same MQTT identifier kick each other out of the broker in a loop |
 | secrets | `.env` stays in `server/`, read by the server; nothing is copied into the unit or the log |
 
-The service reads `server/config.yaml` **as it is at start-up**: check `mqtt.host` before installing (the repository's value is
+The service reads `server/config.yaml` **as it is at start-up**: check `mqtt.host` before installing (the template's value is
 `10.42.0.1`, the Raspberry Pi).
 
 1. Stop the server started by hand (Ctrl-C in the `make run` terminal), then `make server-install`: `active (running)`.
