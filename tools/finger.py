@@ -6,7 +6,7 @@ voice/<carte>/control, déroule l'enregistrement avec le capteur (l'anneau lumin
 guide le doigt) et répond par des événements sur voice/<carte>/event.
 
 Un doigt est enregistré DEUX fois (même doigt, deux poses). Le capteur garde l'empreinte
-sous un numéro ; config.yaml (section fingerprint.users) dit à qui il appartient.
+sous un numéro ; la configuration (section fingerprint.users, dans server/conf/access.yaml) dit à qui il appartient.
 
 Exemples :
     python3 tools/finger.py list
@@ -185,7 +185,7 @@ def command_enroll(link: Link, book: FingerprintBook, name: str | None, finger_i
             if outcome is None:
                 continue
             if outcome and book.name_of(finger_id) != name:
-                logger.info("A ajouter dans server/config.yaml :\n  fingerprint:\n    users:\n      %d: %s",
+                logger.info("A ajouter dans server/conf/access.yaml :\n  fingerprint:\n    users:\n      %d: %s",
                             finger_id, name or "<nom>")
             return 0 if outcome else 1
     except KeyboardInterrupt:
@@ -208,11 +208,11 @@ def command_delete(link: Link, book: FingerprintBook, finger_id: int | None, eve
         logger.error("le capteur a refuse la suppression")
         return 1
     if everything:
-        logger.info("toutes les empreintes sont supprimees. Videz fingerprint.users dans config.yaml.")
+        logger.info("toutes les empreintes sont supprimees. Videz fingerprint.users dans server/conf/access.yaml.")
     else:
         number = int(finger_id or 0)
         logger.info("%s supprimee.%s", book.describe(number),
-                    " Retirez sa ligne de fingerprint.users dans config.yaml." if book.name_of(number) else "")
+                    " Retirez sa ligne de fingerprint.users dans server/conf/access.yaml." if book.name_of(number) else "")
     return 0
 
 

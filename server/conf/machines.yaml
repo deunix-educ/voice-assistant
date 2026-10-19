@@ -1,0 +1,23 @@
+# Inclus par config.yaml (clé include). Section : machines.
+
+# étape 15b : machines Linux du réseau. Chacune fait tourner un agent (agent/voice_agent.py)
+# qui n'exécute QUE les actions de SA liste (/etc/voice-assistant/agent.yaml) ; ici, on dit
+# seulement comment on les appelle. « allume » = Wake-on-LAN, envoyé par le serveur
+# (la machine éteinte n'a pas d'agent). Nouvelle action : l'ajouter à l'agent, ici
+# (mots et phrases), puis dans access.rules.machine (sinon : niveau complet exigé).
+machines:
+    topic_prefix: agent         # agent/<machine>/state (retenu), command, result
+    broadcast: 255.255.255.255  # Wake-on-LAN : diffusion sur le réseau local
+    actions:                    # mots sans accents ; « does » et « verb » : phrases dites
+        # Un mot par entrée, tel que Whisper l'écrit : « lock » devient souvent « Locke »,
+        # « shutdown » devient « Shut down » (d'où « shut »).
+        wake: {words: [allume, allumer, allumez, demarre, demarrer, reveille, reveiller], does: "J'allume", verb: allumer}
+        shutdown: {words: [eteins, eteint, eteindre, eteignez, arrete, arreter, arretez, shutdown, shut], does: "J'éteins", verb: éteindre}
+        reboot: {words: [redemarre, redemarrer, redemarrez, relance, relancer, reboot, reboote, rebooter], does: "Je redémarre", verb: redémarrer}
+        lock: {words: [verrouille, verrouiller, verrouillez, lock, locke, locker, loque], does: "Je verrouille", verb: verrouiller}
+    list:                       # identifiant de l'agent → comment on l'appelle
+        pc-bureau:
+            # Plusieurs mots : « bureau » seul est une pièce. « p c » : Whisper écrit parfois « P.C. ».
+            names: [pc du bureau, p c du bureau, ordinateur du bureau]
+            name: le PC du bureau
+            mac: ""             # ex. "aa:bb:cc:dd:ee:ff" (ip link) pour « allume le PC du bureau »

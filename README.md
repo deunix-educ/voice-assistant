@@ -34,7 +34,7 @@ On pose un doigt enregistré sur le capteur, on parle, on le lève : la session 
 |---|---|---|
 | Capteur R503 | Qui tient la carte ? | le doigt reconnu (emplacement du capteur → nom) |
 | STT | Qu'est-ce qui est dit ? | faster-whisper, sur toute la session |
-| Droits | Qu'a-t-il le droit de demander ? | `access` de `config.yaml`, par personne |
+| Droits | Qu'a-t-il le droit de demander ? | `access` de `conf/access.yaml`, par personne |
 
 > Le doigt dit **qui tient la carte**, pas qui parle : quelqu'un d'autre peut parler pendant que votre doigt est
 > posé. Les actions sensibles demandent donc une confirmation avec le même doigt. Le bouton PTT n'identifie personne.
@@ -207,7 +207,10 @@ make run
 | Fichier | Contenu |
 |---|---|
 | `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
-| `server/config.yaml` | pièces, voix, doigts et droits d'accès, liste des machines |
+| `server/config.yaml` | réglages généraux (audio, MQTT, voix, journal) et liste des fichiers inclus |
+| `server/conf/home.yaml` | pièces et pièce de chaque carte |
+| `server/conf/machines.yaml` | machines Linux du réseau et leurs actions |
+| `server/conf/access.yaml` | droits par personne (`access`) et propriétaire de chaque doigt (`fingerprint`) |
 
 Pour l'aide sur toutes les cibles : `make help`.
 
@@ -247,7 +250,7 @@ sudo systemctl enable --now voice-agent
 sudo systemctl status voice-agent
 ```
 
-**Sur le serveur,** ajouter la machine dans `server/config.yaml` :
+**Sur le serveur,** ajouter la machine dans `server/conf/machines.yaml` :
 
 ```yaml
 machines:
@@ -304,7 +307,43 @@ make lint                           # typage pyright
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées** (branche `main`).
-Branche `fingerprint` : F1 à F4b et F5 (ESP32-S3 Mini) validées.
+Branche `fingerprint` : F1 à F4b, F5 (ESP32-S3 Mini) et F6 (configuration en plusieurs fichiers) validées.
+
+### Branche `fingerprint` — étape F6 : la configuration en plusieurs fichiers
+
+`server/config.yaml` garde les réglages généraux et **inclut** les sections qui grossissent ou qui sont personnelles :
+
+```yaml
+include:
+    - conf/home.yaml          # home : pièces et cartes
+    - conf/machines.yaml      # machines : machines Linux et leurs actions
+    - conf/access.yaml        # access : droits ; fingerprint : propriétaire de chaque doigt
+```
+
+| Règle | Détail |
+|---|---|
+| chemins | relatifs au fichier qui inclut ; un fichier inclus peut en inclure d'autres (8 niveaux au plus, boucle refusée) |
+| motifs | `conf/machines/*.yaml` (un fichier par machine), `conf/**/*.yaml` : triés par nom ; un motif sans fichier donne un avertissement, un chemin sans motif doit exister |
+| fusion | les **mappings s'additionnent** (`home.rooms` peut venir de plusieurs fichiers) ; une même valeur (texte, nombre, liste) définie deux fois est une **erreur qui nomme les deux fichiers**, jamais un écrasement silencieux ; les listes ne se concatènent pas |
+| `mqtt` | reste dans `config.yaml` : le Makefile y lit `mqtt.host` |
+
+Exemple, une pièce par fichier : `include: 'conf/pieces/*.yaml'`, avec dans `conf/pieces/garage.yaml` :
+
+```yaml
+home:
+    rooms:
+        garage: du garage
+```
+
+Un `config.yaml` sans `include` fonctionne comme avant. Les outils (`make finger-*`, `say`, `speech-check`…) passent par le même
+chargeur : ils lisent les fichiers inclus sans rien changer. La configuration lue est **identique** à celle d'avant
+le découpage (vérifié valeur par valeur) : les sections ont seulement changé de fichier.
+
+1. `make test` : 300 tests (28 pour l'inclusion).
+2. Arrêtez puis relancez `make run` : le journal doit dire `doigts : Denis (empreinte 1)` comme avant, et la LED, les droits et
+   les machines se comportent comme avant.
+3. Cassez une règle pour voir le message : définissez deux fois `access.default` (dans `config.yaml` et dans `conf/access.yaml`) ;
+   le serveur refuse de démarrer avec `« access.default » est défini à la fois dans …`. Rétablissez.
 
 ### Branche `fingerprint` — étape F5 : la carte ESP32-S3 Mini
 
@@ -354,7 +393,7 @@ carte à l'autre garde ses doigts.
 
 ### Branche `fingerprint` — étape F4 : les droits suivent le doigt
 
-La personne est celle **dont le doigt a ouvert la session** (`fingerprint.users` de `config.yaml`) ; la voix n'identifie
+La personne est celle **dont le doigt a ouvert la session** (`fingerprint.users` de `conf/access.yaml`) ; la voix n'identifie
 plus personne, et la VAD, la diarisation et l'identification vocale ne tournent plus (le serveur démarre sans pyannote
 ni torch). Les droits restent ceux de l'étape 14, par nom (`access.users`), sans tenir compte de la casse ni des accents.
 
@@ -374,7 +413,7 @@ y inventerait du texte. Mesuré sur 180 sessions : bruit de fond −63 dBFS, par
 1. Arrêtez puis relancez `make run` (un serveur lancé avant F4 applique encore les droits par la voix). Le journal doit
    dire `doigts : Denis (empreinte 1)` et aucune ligne `droits : …`.
 2. Doigt de Denis : « allume la lumière » → exécuté ; « ouvre la porte » → « Confirmez-vous… », reposez le **même** doigt : « oui ».
-3. Un doigt d'une autre personne : `make finger-enroll NAME=Jessica`, ajoutez la ligne affichée dans `config.yaml`, relancez.
+3. Un doigt d'une autre personne : `make finger-enroll NAME=Jessica`, ajoutez la ligne affichée dans `conf/access.yaml`, relancez.
    Jessica : « allume la lumière » → exécuté ; « ouvre la porte » → « Désolé Jessica, votre profil ne permet pas d'ouvrir… ».
 4. Denis demande d'ouvrir la porte, puis le doigt de Jessica dit « oui » → « Seul Denis peut confirmer. J'annule. » ;
    un autre doigt de Denis (`make finger-enroll NAME=Denis`) → « Confirmez avec le même doigt que pour la demande. »
@@ -404,7 +443,7 @@ le capteur. Les durées (effleurement 40 ms, retrait 150 ms, identification 3 s)
 
 ### Branche `fingerprint` — étape F2 : enregistrer les doigts
 
-Le capteur garde les empreintes (200 emplacements) ; `config.yaml` dit à qui elles appartiennent.
+Le capteur garde les empreintes (200 emplacements) ; `conf/access.yaml` dit à qui elles appartiennent.
 Le serveur vocal n'a pas besoin de tourner : l'outil parle directement à la carte par MQTT.
 
 ```bash
@@ -415,7 +454,7 @@ make finger-delete ID=2                # ou ALL=1 pour tout effacer
 make finger-list MQTT_HOST=192.168.1.4 # broker différent de celui de config.yaml
 ```
 
-L'enregistrement affiche la ligne à copier dans `server/config.yaml` :
+L'enregistrement affiche la ligne à copier dans `server/conf/access.yaml` :
 
 ```yaml
 fingerprint:
@@ -480,7 +519,7 @@ les actions de **sa** liste (`/etc/voice-assistant/agent.yaml`), commandes fixes
 shell. Le serveur n'envoie qu'un nom d'action. « Allume » réveille une machine
 éteinte par **Wake-on-LAN** (paquet réseau reçu par la carte réseau en veille).
 
-| Action | Mots | Droits (config.yaml) |
+| Action | Mots | Droits (conf/access.yaml) |
 |---|---|---|
 | `wake` (serveur) | allume, démarre, réveille | standard |
 | `lock` | verrouille | standard |
@@ -491,7 +530,7 @@ shell. Le serveur n'envoie qu'un nom d'action. « Allume » réveille une machin
 2. `make run`, puis doigt posé : « éteins le PC du bureau » → confirmation → même doigt : « oui » :
    l'agent affiche `essai : systemctl poweroff (non execute)`.
 3. Machine réelle : copier `agent/` dessus, `make -C agent install`, régler
-   `/etc/voice-assistant/agent.yaml`, et la nommer dans `server/config.yaml` (`machines.list`).
+   `/etc/voice-assistant/agent.yaml`, et la nommer dans `server/conf/machines.yaml` (`machines.list`).
 
 **Broker anonyme** : tout appareil du réseau peut alors publier sur `agent/<machine>/command`.
 En production, les comptes et droits de l'étape 15 (`mosquitto/acl` contient les règles des agents).
@@ -524,7 +563,7 @@ Mise en place, **dans cet ordre** : un broker encore ouvert accepte déjà les c
 | **standard** | lumières, volets, fermer la porte | personne nommée par un doigt, sans niveau (`access.default`) |
 | **limite** | conversation seulement | bouton PTT, ou doigt sans nom (`access.unknown`) |
 
-Règles par appareil et action dans `config.yaml` (section `access`) ; une action absente des
+Règles par appareil et action dans `conf/access.yaml` (section `access`) ; une action absente des
 règles exige le niveau complet. Les noms de `access.users` sont ceux de `fingerprint.users`.
 
 **Rappel** : un doigt n'est pas une preuve absolue (empreinte copiée, doigt posé par un tiers pendant que quelqu'un
@@ -553,7 +592,7 @@ son, la **marge minimale** (retard encore absorbable) et le nombre de réamorça
 ### Étape 11 — domotique
 
 Une commande tient en trois mots : une **action** (allumer, éteindre, ouvrir, fermer), un
-**appareil** (lumière, volets, porte) et une **pièce** (liste dans `config.yaml`, section `home`).
+**appareil** (lumière, volets, porte) et une **pièce** (liste dans `conf/home.yaml`, section `home`).
 Sans pièce, c'est celle de la carte. Le serveur publie `home/<pièce>/<appareil>/set` pour
 toute domotique ; si la pièce est celle de la carte, la carte exécute aussi la commande :
 LED de démonstration sur GPIO 21 pour la lumière, volets et porte simulés (liaison série).

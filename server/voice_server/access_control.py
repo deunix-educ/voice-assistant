@@ -114,7 +114,7 @@ class AccessPolicy:
             # Une règle mal écrite serait ignorée en silence (action exigeant alors « complet »).
             unknown = [f"{device}.{action}" for action in actions if action not in allowed.get(device, ())]
             if unknown:
-                raise ValueError(f"config.yaml, access.rules : action inconnue {', '.join(unknown)} "
+                raise ValueError(f"configuration, access.rules : action inconnue {', '.join(unknown)} "
                                  f"(connues : {', '.join(f'{d}.{a}' for d, acts in allowed.items() for a in acts)})")
         self._pending: dict[str, _Pending] = {}
 

@@ -1,0 +1,26 @@
+# Inclus par config.yaml (clé include). Sections : access, fingerprint.
+
+# étape 14 : droits par personne. Depuis F4, la personne est celle dont le DOIGT a ouvert la session
+# (section fingerprint, plus bas) ; la voix n'identifie plus personne. Niveaux : complet > standard > limite.
+# Les noms se comparent sans tenir compte de la casse ni des accents (« denis » = « Denis »).
+access:
+    unknown: limite             # bouton PTT, ou doigt sans nom dans fingerprint.users : conversation seulement
+    default: standard           # personne nommée par un doigt, absente de users
+    users:                      # nom de la personne → niveau ; le nom est celui de fingerprint.users
+        Denis: complet
+    rules:                      # niveau minimal par appareil et action ; absent = complet
+        light: {"on": standard, "off": standard}   # guillemets : on/off nus = booléens en YAML
+        shutter: {open: standard, close: standard}
+        door: {open: complet, close: standard}
+        machine: {wake: standard, lock: standard, shutdown: complet, reboot: complet}   # étape 15b
+    # « Confirmez-vous ? » puis « oui », dit avec le MÊME DOIGT que la demande : un autre doigt de la
+    # même personne, le doigt d'une autre personne ou le bouton PTT annulent la demande.
+    confirm: [door.open, machine.shutdown, machine.reboot]
+    confirm_timeout_s: 15
+
+# branche fingerprint, étape F2 : capteur d'empreinte R503. Chaque doigt enregistré dans le capteur
+# a un numéro (emplacement) ; ici, à qui il appartient. Une même personne peut avoir plusieurs doigts.
+# Les droits de chaque personne restent dans access.users, par nom.
+# Enregistrer un doigt : make finger-enroll NAME=Denis ; il affiche la ligne à ajouter ci-dessous.
+fingerprint:
+    users: { 1: Denis }                   # ex. : {1: Denis, 2: Denis, 3: Jessica}

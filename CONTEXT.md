@@ -50,7 +50,8 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F3 | Session déclenchée par le doigt : début à la pose, fin au retrait, identité à la pose | **fait** (`0c7fae1`) | **oui (2026-10-18)** |
 | F4 | Serveur : droits par doigt, confirmation par le même doigt, pipeline sans VAD / diarisation / voix | **fait** | **oui (2026-10-18)** |
 | F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | **fait** | **oui (2026-10-18)** |
-| F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | **fait** | **oui (2026-10-19)** |
+| F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | **fait** (`dd268d2`) | **oui (2026-10-19)** |
+| F6 | Configuration en plusieurs fichiers : `include` (motifs admis), `server/conf/` | **fait** | **oui (2026-10-19)** |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
@@ -74,6 +75,7 @@ profil (étape 14) et l'authentification MQTT (étape 15). **Placement décidé 
 | Core Arduino-ESP32 | **3.x** (ESP-IDF 5.x), driver `driver/i2s_std.h` | ancien `driver/i2s.h` déprécié ; plateforme `pioarduino` |
 | Plateforme PlatformIO | `pioarduino` 54.03.21 (fork maintenu pour core 3.x) | le paquet officiel `espressif32` est resté en core 2.0.x |
 | PlatformIO isolé | venv dédié `.pio-venv`, avec `click==8.1.8` | click ≥ 8.3 casse l'esptool 5.0 du core 3.x (erreur `get_metavar() missing ctx`) ; évite aussi tout conflit avec les dépendances du serveur |
+| Configuration en plusieurs fichiers (F6) | `config.yaml` inclut des fichiers par la clé `include` (chemins relatifs à celui qui inclut, motifs `*` `?` `**` triés par nom, 8 niveaux, boucle refusée) ; les mappings s'additionnent, toute autre valeur définie deux fois est une erreur qui nomme les deux fichiers ; `mqtt` reste dans `config.yaml` | `home` et `machines` peuvent grossir (une pièce ou une machine par fichier) ; le Makefile lit `mqtt.host` dans `config.yaml` ; aucun écrasement silencieux |
 | Périphériques I2S | I2S0 = micro (RX), I2S1 = ampli (TX) | duplex séparé, pas de conflit d'horloges |
 | Broches | voir `firmware/include/config.h` | aucune broche de strapping (0, 2, 5, 12, 15) sur l'audio |
 | Broker de dev : conteneur `mosquitto_services-mosquitto-1`, compose `~/srv/docker-compose.mosquitto.yml`, config montée `~/srv/mosquitto/config/mosquitto.conf` ; **IP du PC = 192.168.1.104** (et non .0.104) | 2026-09-29 | constaté sur la machine |
@@ -198,7 +200,9 @@ firmware/src/CommandHandler.*      JSON du topic control (start/end/ping)       
 server/voice_server/audio_resampler.py  WAV quelconque -> 16 kHz mono -3 dBFS   [étape 5]
 server/voice_server/audio_sender.py  START / chunks rythmés / END vers une carte [étape 5]
 tools/wav_to_mqtt.py               WAV ou son pur -> carte, avec bilan          [étape 5]
-server/voice_server/settings.py    config.yaml + .env                           [étape 4]
+server/voice_server/settings.py    config.yaml (+ include, F6) + .env           [étape 4, F6]
+server/conf/home.yaml, machines.yaml, access.yaml  sections home / machines / access + fingerprint [F6]
+server/tests/conftest.py, test_config_include.py   copie de la config, 28 tests de l'inclusion [F6]
 server/voice_server/mqtt_link.py   paho-mqtt 2.x, abonnement voice/+/...        [étape 4]
 server/voice_server/audio_buffer.py  PCM borné, niveaux, écriture WAV           [étape 4]
 server/voice_server/session_manager.py  sessions, pertes, délais, WAV           [étape 4]
@@ -261,10 +265,13 @@ TLS (option de l'étape 15, non activée).
 
 ### État au 2026-10-19 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1 à F4b et F5 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
+- Branche `fingerprint` : **F1 à F4b, F5 et F6 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
   `254fc09` (F4b), `dd268d2` (F5). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
   y compris « autre doigt = 3 éclairs rouges ».
-- `make test` : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
+- F6 (configuration en plusieurs fichiers) **validée par l'utilisateur le 2026-10-19** ; `make test` : 300 tests, pyright 0 erreur ;
+  `test_speech_between_silences_is_transcribed_without_vad` est **instable** (Piper varie d'un essai à l'autre : « Quel aurait-il ? »
+  au lieu de « heure », ~2 échecs sur 8, sans rapport avec F6) ; à fiabiliser.
+- Avant F6 : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
   (36,8 % / 32,8 %).
 - Le `server/config.yaml` de travail de l'utilisateur garde `mqtt.host: 192.168.1.4` (non commité, le dépôt garde `10.42.0.1`) ;
   `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil). Pour commiter `config.yaml`, ne jamais embarquer cette
@@ -1100,3 +1107,17 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   portail. Le commit est sain (12 fichiers, message complet, pas de verrou). `server/config.yaml` a été indexé ensuite par
   l'utilisateur (différence : `mqtt.host: 192.168.1.4`, son adresse locale) ; un `COMMIT_EDITMSG` vide indique une tentative de commit
   non terminée. Rien d'autre commité, rien de poussé (la branche a 6 commits d'avance sur `origin/fingerprint`).
+- **2026-10-19** — Branche poussée à la demande de l'utilisateur (`origin/fingerprint` = `09e08de`, 7 commits, aucun secret trouvé
+  dans les lignes ajoutées). `rebase.autoStash = true` réglé dans ce dépôt (le `git pull` était refusé par `pull.rebase` et un
+  `config.yaml` modifié). `server/config.yaml`, supprimé du disque par l'utilisateur, recréé à l'identique de sa version (dépôt +
+  `mqtt.host: 192.168.1.4`). Questions : mise à jour automatique de `fingerprint.users` par `finger-enroll` **abandonnée** par
+  l'utilisateur ; la configuration des empreintes marche **serveur arrêté** (broker + carte suffisent, lu dans `tools/finger.py`).
+- **2026-10-19** — **F6 écrite** (demande : « config.yaml les clefs home, machines, access + fingerprint pourraient se trouver dans
+  3 yaml à inclure ; faisable ? », puis « server/conf » et « prévoir les motifs »). `settings.py` : `_ConfigReader` (include, motifs,
+  fusion des mappings, erreurs nommant les fichiers), `read_config` ; `__main__.py` : une configuration invalide s'arrête avec un
+  message (sans trace d'appels). `server/conf/home.yaml`, `machines.yaml`, `access.yaml` (avec `fingerprint`) reprennent les
+  sections et leurs commentaires ; la configuration lue est **identique** à celle d'avant (comparée valeur par valeur). Les messages de
+  `tools/finger.py` disent `server/conf/access.yaml`. 28 tests (`test_config_include.py`), `conftest.py` (copie de la config) ;
+  3 tests qui réécrivaient `config.yaml` adaptés. 300 tests, pyright 0 erreur. **Non validée, non commitée.**
+- **2026-10-19** — **F6 validée** par l'utilisateur (« Je valide F6 ») et commitée ; il demande ensuite de regarder le test instable
+  `test_speech_between_silences_is_transcribed_without_vad`.

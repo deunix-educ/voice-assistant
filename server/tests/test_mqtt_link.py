@@ -61,9 +61,9 @@ def test_log_file_receives_the_journal(tmp_path: Path, restore_logging: None) ->
     assert "essai du journal" in settings.log_file.read_text(encoding="utf-8")
 
 
-def test_log_file_is_optional(tmp_path: Path) -> None:
-    text = CONFIG.read_text(encoding="utf-8").replace("file: logs/voice-server.log", "file:")
-    config = tmp_path / "config.yaml"
-    config.write_text(text, encoding="utf-8")
-    assert load_settings(config).log_file is None
+def test_log_file_is_optional(config_copy: Path) -> None:
+    text = config_copy.read_text(encoding="utf-8")
+    assert "file: logs/voice-server.log" in text
+    config_copy.write_text(text.replace("file: logs/voice-server.log", "file:"), encoding="utf-8")
+    assert load_settings(config_copy).log_file is None
     assert load_settings(CONFIG).log_file == (CONFIG.parent / "logs" / "voice-server.log").resolve()

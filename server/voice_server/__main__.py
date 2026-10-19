@@ -29,6 +29,8 @@ import threading
 from collections.abc import Callable
 from pathlib import Path
 
+import yaml
+
 from voice_server.audio_resampler import AudioResampler
 from voice_server.audio_sender import AudioSender
 from voice_server.fingerprint_book import FingerprintBook
@@ -105,7 +107,7 @@ def make_assistant(settings: Settings, resampler: AudioResampler, sender: AudioS
         # États retenus des agents : reçus dès l'abonnement, même démarrés avant le serveur.
         link.on_topic(f"{settings.machines.topic_prefix}/+/state", machines.on_state)
         link.on_topic(f"{settings.machines.topic_prefix}/+/result", machines.on_result)
-        logger.info("machines : %s", ", ".join(settings.machines.machines) or "aucune (config.yaml)")
+        logger.info("machines : %s", ", ".join(settings.machines.machines) or "aucune (section machines)")
 
     fingers = FingerprintBook(settings.fingerprint)
     policy = AccessPolicy(settings.access, settings.home, settings.machines)
@@ -148,7 +150,12 @@ def main(argv: list[str]) -> int:
                         help="renvoie chaque session a la carte, qui la joue (etape 5), sans modeles")
     args = parser.parse_args(argv)
 
-    settings = load_settings(args.config)
+    try:
+        settings = load_settings(args.config)
+    except (ValueError, OSError, yaml.YAMLError) as error:
+        # Le journal n'est pas encore réglé (il dépend de la configuration) : message direct, sans trace d'appels.
+        print(f"configuration invalide : {error}", file=sys.stderr)
+        return 1
     setup_logging(settings)
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)  # une ligne par transcription sinon
     logger.info("enregistrements dans %s", settings.recordings_dir)

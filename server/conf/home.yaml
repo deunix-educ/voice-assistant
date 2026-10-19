@@ -1,0 +1,16 @@
+# Inclus par config.yaml (clé include). Section : home.
+
+# étape 11 : domotique. Commandes publiées sur <topic_prefix>/<pièce>/<appareil>/set ;
+# la carte exécute en plus celles de sa propre pièce (LED de démonstration).
+home:
+    topic_prefix: home
+    rooms:                      # nom tel qu'on le dit → complément dans les réponses
+        salon: du salon
+        cuisine: de la cuisine
+        chambre: de la chambre
+        salle de bain: de la salle de bain
+        bureau: du bureau
+        garage: du garage
+        entrée: de l'entrée
+    boards:                     # pièce de chaque carte : « allume la lumière » sans pièce = ici
+        esp32-01: salon

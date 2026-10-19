@@ -35,7 +35,7 @@ You put an enrolled finger on the sensor, speak, and lift it: the session lasts 
 |---|---|---|
 | R503 sensor | Who holds the board? | the recognised finger (sensor slot → name) |
 | STT | What is being said? | faster-whisper, on the whole session |
-| Rights | What may they ask for? | `access` in `config.yaml`, per person |
+| Rights | What may they ask for? | `access` in `conf/access.yaml`, per person |
 
 > The finger says **who holds the board**, not who speaks: someone else can talk while your finger is down. Sensitive
 > actions therefore ask for a confirmation with the same finger. The PTT button identifies nobody. There is no
@@ -205,7 +205,10 @@ make run
 | File | Contents |
 |---|---|
 | `server/.env` | `MQTT_USERNAME`, `MQTT_PASSWORD` |
-| `server/config.yaml` | rooms, voices, fingers and access rights, machine list |
+| `server/config.yaml` | general settings (audio, MQTT, voices, log) and the list of included files |
+| `server/conf/home.yaml` | rooms and the room of each board |
+| `server/conf/machines.yaml` | Linux machines on the network and their actions |
+| `server/conf/access.yaml` | rights per person (`access`) and the owner of each finger (`fingerprint`) |
 
 For help on all targets: `make help`.
 
@@ -245,7 +248,7 @@ sudo systemctl enable --now voice-agent
 sudo systemctl status voice-agent
 ```
 
-**On the server,** add the machine to `server/config.yaml`:
+**On the server,** add the machine to `server/conf/machines.yaml`:
 
 ```yaml
 machines:
@@ -302,7 +305,43 @@ make lint                                # pyright type check
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
 Current step: **done — steps 1 to 16 are validated** (`main` branch).
-`fingerprint` branch: F1 to F4b and F5 (ESP32-S3 Mini) validated.
+`fingerprint` branch: F1 to F4b, F5 (ESP32-S3 Mini) and F6 (configuration in several files) validated.
+
+### `fingerprint` branch — step F6: the configuration in several files
+
+`server/config.yaml` keeps the general settings and **includes** the sections that grow or are personal:
+
+```yaml
+include:
+    - conf/home.yaml          # home: rooms and boards
+    - conf/machines.yaml      # machines: Linux machines and their actions
+    - conf/access.yaml        # access: rights; fingerprint: owner of each finger
+```
+
+| Rule | Detail |
+|---|---|
+| paths | relative to the including file; an included file may include others (8 levels at most, loops refused) |
+| patterns | `conf/machines/*.yaml` (one file per machine), `conf/**/*.yaml`: sorted by name; a pattern matching nothing gives a warning, a path without a pattern must exist |
+| merging | **mappings add up** (`home.rooms` may come from several files); the same value (text, number, list) defined twice is an **error naming both files**, never a silent overwrite; lists are not concatenated |
+| `mqtt` | stays in `config.yaml`: the Makefile reads `mqtt.host` there |
+
+Example, one room per file: `include: 'conf/pieces/*.yaml'`, with `conf/pieces/garage.yaml` containing:
+
+```yaml
+home:
+    rooms:
+        garage: du garage
+```
+
+A `config.yaml` without `include` works as before. The tools (`make finger-*`, `say`, `speech-check`…) use the same loader: they
+read the included files with no change. The loaded configuration is **identical** to the one before
+the split (checked value by value): the sections only moved to other files.
+
+1. `make test`: 300 tests (28 for the inclusion).
+2. Stop and restart `make run`: the log must say `doigts : Denis (empreinte 1)` as before, and the LED, the rights and the machines
+   behave as before.
+3. Break a rule to see the message: define `access.default` twice (in `config.yaml` and in `conf/access.yaml`); the server refuses
+   to start with `« access.default » est défini à la fois dans …`. Put it back.
 
 ### `fingerprint` branch — step F5: the ESP32-S3 Mini board
 
@@ -353,7 +392,7 @@ fingers.
 
 ### `fingerprint` branch — step F4: rights follow the finger
 
-The person is the one **whose finger opened the session** (`fingerprint.users` in `config.yaml`); the voice identifies
+The person is the one **whose finger opened the session** (`fingerprint.users` in `conf/access.yaml`); the voice identifies
 nobody any more, and VAD, diarization and voice identification no longer run (the server starts without pyannote or
 torch). Rights are still those of step 14, by name (`access.users`), ignoring case and accents.
 
@@ -373,7 +412,7 @@ up. Measured on 180 sessions: background noise −63 dBFS, quietest speech −51
 1. Stop and restart `make run` (a server started before F4 still applies voice-based rights). The log must say
    `doigts : Denis (empreinte 1)` and show no `droits: …` line.
 2. Denis's finger: "turn on the light" → done; "open the door" → "Confirmez-vous…", put the **same** finger down again: "yes".
-3. Another person's finger: `make finger-enroll NAME=Jessica`, add the printed line to `config.yaml`, restart.
+3. Another person's finger: `make finger-enroll NAME=Jessica`, add the printed line to `conf/access.yaml`, restart.
    Jessica: light → done; door → "Désolé Jessica, votre profil ne permet pas d'ouvrir…".
 4. Denis asks to open the door, then Jessica's finger says "yes" → "Seul Denis peut confirmer. J'annule." ;
    another finger of Denis (`make finger-enroll NAME=Denis`) → "Confirmez avec le même doigt que pour la demande."
@@ -403,7 +442,7 @@ the sensor. The timings (brush 40 ms, release 150 ms, identification 3 s) are in
 
 ### `fingerprint` branch — step F2: enrolling fingers
 
-The sensor stores the fingerprints (200 slots); `config.yaml` says who owns them. The voice server
+The sensor stores the fingerprints (200 slots); `conf/access.yaml` says who owns them. The voice server
 does not need to run: the tool talks to the board directly over MQTT.
 
 ```bash
@@ -414,7 +453,7 @@ make finger-delete ID=2                # or ALL=1 to erase everything
 make finger-list MQTT_HOST=192.168.1.4 # a broker other than the one in config.yaml
 ```
 
-Enrolling prints the line to copy into `server/config.yaml`:
+Enrolling prints the line to copy into `server/conf/access.yaml`:
 
 ```yaml
 fingerprint:
@@ -479,7 +518,7 @@ the actions in **its own** list (`/etc/voice-assistant/agent.yaml`): fixed comma
 no shell. The server only sends an action name. "Allume" wakes a machine that is
 off through **Wake-on-LAN** (a network packet received by the sleeping network card).
 
-| Action | Words | Rights (config.yaml) |
+| Action | Words | Rights (conf/access.yaml) |
 |---|---|---|
 | `wake` (server) | allume, démarre, réveille | standard |
 | `lock` | verrouille | standard |
@@ -490,7 +529,7 @@ off through **Wake-on-LAN** (a network packet received by the sleeping network c
 2. `make run`, then finger down: "éteins le PC du bureau" → confirmation → same finger: "oui":
    the agent prints `essai : systemctl poweroff (non execute)`.
 3. Real machine: copy `agent/` to it, `make -C agent install`, edit
-   `/etc/voice-assistant/agent.yaml`, and name it in `server/config.yaml` (`machines.list`).
+   `/etc/voice-assistant/agent.yaml`, and name it in `server/conf/machines.yaml` (`machines.list`).
 
 **Anonymous broker**: any device on the network can then publish on `agent/<machine>/command`.
 In production, use the accounts and rights of step 15 (`mosquitto/acl` has the agent rules).
@@ -523,7 +562,7 @@ Setup, **in this order**: a broker that is still open already accepts clients th
 | **standard** | lights, shutters, closing the door | a person named by a finger, without a level (`access.default`) |
 | **limite** (limited) | conversation only | the PTT button, or a finger with no name (`access.unknown`) |
 
-Rules per device and action in `config.yaml` (section `access`); an action missing from the
+Rules per device and action in `conf/access.yaml` (section `access`); an action missing from the
 rules requires the full level. Names in `access.users` are those of `fingerprint.users`.
 
 **Reminder**: a finger is not absolute proof (a copied fingerprint, or a finger put down by one person while another
@@ -552,7 +591,7 @@ instead of stuttering. The `played` report gives the delay to the first sample, 
 ### Step 11 — home automation
 
 A command is three words: an **action** (allumer, éteindre, ouvrir, fermer), a **device**
-(lumière, volets, porte) and a **room** (listed in `config.yaml`, section `home`). Without a
+(lumière, volets, porte) and a **room** (listed in `conf/home.yaml`, section `home`). Without a
 room, the board's own room is used. The server publishes `home/<room>/<device>/set` for any
 home automation system; when the room is the board's, the board also executes it: demo LED
 on GPIO 21 for the light, simulated shutters and door (serial log).

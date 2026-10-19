@@ -168,13 +168,14 @@ def test_project_config_is_valid() -> None:
     assert not policy.check(DOOR_OPEN, "Pierre").allowed
 
 
-def test_yaml_boolean_keys_are_read_as_on_off(tmp_path: Path) -> None:
+def test_yaml_boolean_keys_are_read_as_on_off(config_copy: Path) -> None:
     """« light: {on: standard} » sans guillemets : YAML lit True, le chargeur rend « on »."""
-    text = (Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8")
-    config = tmp_path / "config.yaml"
-    config.write_text(text.replace('{"on": standard, "off": standard}', "{on: standard, off: standard}"),
+    access = config_copy.parent / "conf" / "access.yaml"
+    text = access.read_text(encoding="utf-8")
+    assert '{"on": standard, "off": standard}' in text
+    access.write_text(text.replace('{"on": standard, "off": standard}', "{on: standard, off: standard}"),
                       encoding="utf-8")
-    assert load_settings(config).access.rules["light"] == {"on": "standard", "off": "standard"}
+    assert load_settings(config_copy).access.rules["light"] == {"on": "standard", "off": "standard"}
 
 
 def test_unknown_rule_action_is_rejected() -> None:

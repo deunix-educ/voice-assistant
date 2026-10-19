@@ -183,7 +183,7 @@ class MachineController:
         if previous == status:
             return
         if machine not in self._settings.machines:
-            logger.warning("agent %s : absent de config.yaml (machines.list), on ne peut pas le nommer", machine)
+            logger.warning("agent %s : absent de la configuration (machines.list), on ne peut pas le nommer", machine)
         elif status.online:
             unknown = [action for action in status.actions if action not in self._settings.actions]
             logger.info("agent %s : en ligne, actions %s%s", machine, ", ".join(status.actions) or "aucune",

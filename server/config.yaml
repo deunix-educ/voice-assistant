@@ -3,6 +3,15 @@
 # Les sections marquées « étape N » ne sont lues qu'à partir de cette étape.
 # Branche fingerprint : pas de VAD, de diarisation, de voix ni de mot de réveil (étapes F3 à F4b).
 
+# Étape F6 : les sections longues ou personnelles vivent dans server/conf/ et sont incluses ici.
+# Chemins relatifs à ce fichier ; motifs admis (« conf/machines/*.yaml » : un fichier par machine, triés par nom).
+# Les mappings s'additionnent (home.rooms peut venir de plusieurs fichiers) ; toute autre valeur définie
+# deux fois est une erreur qui nomme les deux fichiers. mqtt reste ici : le Makefile y lit mqtt.host.
+include:
+    - conf/home.yaml            # home : pièces et cartes (domotique)
+    - conf/machines.yaml        # machines : machines Linux du réseau et leurs actions
+    - conf/access.yaml          # access : droits par personne ; fingerprint : à qui appartient chaque doigt
+
 audio:
     sample_rate: 16000          # Hz, identique dans tout le système
     bits: 16
@@ -57,64 +66,3 @@ tts:
     voice: fr_FR-siwis-medium
     length_scale: 1.0           # > 1 : débit plus lent
 
-# étape 11 : domotique. Commandes publiées sur <topic_prefix>/<pièce>/<appareil>/set ;
-# la carte exécute en plus celles de sa propre pièce (LED de démonstration).
-home:
-    topic_prefix: home
-    rooms:                      # nom tel qu'on le dit → complément dans les réponses
-        salon: du salon
-        cuisine: de la cuisine
-        chambre: de la chambre
-        salle de bain: de la salle de bain
-        bureau: du bureau
-        garage: du garage
-        entrée: de l'entrée
-    boards:                     # pièce de chaque carte : « allume la lumière » sans pièce = ici
-        esp32-01: salon
-
-# étape 14 : droits par personne. Depuis F4, la personne est celle dont le DOIGT a ouvert la session
-# (section fingerprint, plus bas) ; la voix n'identifie plus personne. Niveaux : complet > standard > limite.
-# Les noms se comparent sans tenir compte de la casse ni des accents (« denis » = « Denis »).
-access:
-    unknown: limite             # bouton PTT, ou doigt sans nom dans fingerprint.users : conversation seulement
-    default: standard           # personne nommée par un doigt, absente de users
-    users:                      # nom de la personne → niveau ; le nom est celui de fingerprint.users
-        Denis: complet
-    rules:                      # niveau minimal par appareil et action ; absent = complet
-        light: {"on": standard, "off": standard}   # guillemets : on/off nus = booléens en YAML
-        shutter: {open: standard, close: standard}
-        door: {open: complet, close: standard}
-        machine: {wake: standard, lock: standard, shutdown: complet, reboot: complet}   # étape 15b
-    # « Confirmez-vous ? » puis « oui », dit avec le MÊME DOIGT que la demande : un autre doigt de la
-    # même personne, le doigt d'une autre personne ou le bouton PTT annulent la demande.
-    confirm: [door.open, machine.shutdown, machine.reboot]
-    confirm_timeout_s: 15
-
-# étape 15b : machines Linux du réseau. Chacune fait tourner un agent (agent/voice_agent.py)
-# qui n'exécute QUE les actions de SA liste (/etc/voice-assistant/agent.yaml) ; ici, on dit
-# seulement comment on les appelle. « allume » = Wake-on-LAN, envoyé par le serveur
-# (la machine éteinte n'a pas d'agent). Nouvelle action : l'ajouter à l'agent, ici
-# (mots et phrases), puis dans access.rules.machine (sinon : niveau complet exigé).
-machines:
-    topic_prefix: agent         # agent/<machine>/state (retenu), command, result
-    broadcast: 255.255.255.255  # Wake-on-LAN : diffusion sur le réseau local
-    actions:                    # mots sans accents ; « does » et « verb » : phrases dites
-        # Un mot par entrée, tel que Whisper l'écrit : « lock » devient souvent « Locke »,
-        # « shutdown » devient « Shut down » (d'où « shut »).
-        wake: {words: [allume, allumer, allumez, demarre, demarrer, reveille, reveiller], does: "J'allume", verb: allumer}
-        shutdown: {words: [eteins, eteint, eteindre, eteignez, arrete, arreter, arretez, shutdown, shut], does: "J'éteins", verb: éteindre}
-        reboot: {words: [redemarre, redemarrer, redemarrez, relance, relancer, reboot, reboote, rebooter], does: "Je redémarre", verb: redémarrer}
-        lock: {words: [verrouille, verrouiller, verrouillez, lock, locke, locker, loque], does: "Je verrouille", verb: verrouiller}
-    list:                       # identifiant de l'agent → comment on l'appelle
-        pc-bureau:
-            # Plusieurs mots : « bureau » seul est une pièce. « p c » : Whisper écrit parfois « P.C. ».
-            names: [pc du bureau, p c du bureau, ordinateur du bureau]
-            name: le PC du bureau
-            mac: ""             # ex. "aa:bb:cc:dd:ee:ff" (ip link) pour « allume le PC du bureau »
-
-# branche fingerprint, étape F2 : capteur d'empreinte R503. Chaque doigt enregistré dans le capteur
-# a un numéro (emplacement) ; ici, à qui il appartient. Une même personne peut avoir plusieurs doigts.
-# Les droits de chaque personne restent dans access.users, par nom.
-# Enregistrer un doigt : make finger-enroll NAME=Denis ; il affiche la ligne à ajouter ci-dessous.
-fingerprint:
-    users: { 1: Denis }                   # ex. : {1: Denis, 2: Denis, 3: Jessica}

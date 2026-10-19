@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import glob
+import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
@@ -11,6 +13,8 @@ import yaml
 from dotenv import load_dotenv
 
 from voice_server.text_normalize import normalize
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass(frozen=True)
@@ -154,7 +158,7 @@ def _section(data: dict[str, Any], name: str) -> dict[str, Any]:
     """Rend une section du YAML, avec une erreur claire si elle manque."""
     value = data.get(name)
     if not isinstance(value, dict):
-        raise ValueError(f"config.yaml : section « {name} » absente ou invalide")
+        raise ValueError(f"configuration : section « {name} » absente ou invalide")
     return value  # type: ignore[return-value]
 
 
@@ -200,17 +204,106 @@ def _fingerprint(data: dict[str, Any]) -> FingerprintSettings:
         try:
             number = int(finger_id)
         except (TypeError, ValueError):
-            raise ValueError(f"config.yaml, fingerprint.users : « {finger_id} » n'est pas un numero d'empreinte") from None
+            raise ValueError(f"configuration, fingerprint.users : « {finger_id} » n'est pas un numero d'empreinte") from None
         if number < 0 or not str(name).strip():
-            raise ValueError(f"config.yaml, fingerprint.users : empreinte {finger_id} : numero >= 0 et nom non vide requis")
+            raise ValueError(f"configuration, fingerprint.users : empreinte {finger_id} : numero >= 0 et nom non vide requis")
         users[number] = str(name).strip()
     return FingerprintSettings(users=users)
 
 
+class _ConfigReader:
+    """Lit config.yaml et les fichiers de sa clé « include », et les réunit en un seul dictionnaire.
+
+    Règles (volontairement simples, pour qu'un fichier de plus ne change jamais en silence une valeur) :
+      - les mappings s'additionnent : « home.rooms » peut venir de plusieurs fichiers ;
+      - toute autre valeur (texte, nombre, liste) définie dans deux fichiers est une erreur qui les nomme ;
+      - « include » est un chemin ou une liste de chemins, relatifs au fichier qui les inclut ; les motifs
+        (« conf/machines/*.yaml », « ** ») sont admis, triés par nom ; un fichier peut en inclure d'autres.
+    """
+
+    MAX_DEPTH = 8
+
+    def __init__(self, root: Path) -> None:
+        self._root = root
+        self.merged: dict[str, Any] = {}
+        self._origins: dict[tuple[str, ...], Path] = {}   # clé → fichier qui l'a définie
+        self._loaded: set[Path] = set()
+
+    def _name(self, path: Path) -> str:
+        """Nom court d'un fichier : relatif au dossier de config.yaml quand c'est possible."""
+        try:
+            return str(path.relative_to(self._root))
+        except ValueError:
+            return str(path)
+
+    def _expand(self, base: Path, pattern: str) -> list[Path]:
+        """Fichiers désignés par un élément d'« include » ; un chemin sans motif doit exister."""
+        candidate = Path(pattern)
+        full = candidate if candidate.is_absolute() else base / candidate
+        if not any(char in pattern for char in "*?["):
+            if not full.is_file():
+                raise ValueError(f"include : fichier introuvable : {self._name(full)}")
+            return [full.resolve()]
+        found = sorted(Path(name).resolve() for name in glob.glob(str(full), recursive=True) if Path(name).is_file())
+        if not found:
+            logger.warning("include : le motif %s ne désigne aucun fichier", pattern)
+        return found
+
+    def _merge(self, target: dict[Any, Any], source: dict[Any, Any], origin: Path, prefix: tuple[str, ...]) -> None:
+        for key, value in source.items():
+            where = (*prefix, _key(key))
+            if key in target:
+                first = self._origins[where]
+                if not (isinstance(value, dict) and isinstance(target[key], dict)):
+                    raise ValueError(f"« {'.'.join(where)} » est défini à la fois dans {self._name(first)} "
+                                     f"et dans {self._name(origin)}")
+            elif isinstance(value, dict):
+                target[key] = {}
+                self._origins[where] = origin
+            else:
+                target[key] = value
+                self._origins[where] = origin
+                continue
+            self._merge(target[key], value, origin, where)
+
+    def load(self, path: Path, chain: tuple[Path, ...] = ()) -> None:
+        resolved = path.resolve()
+        if resolved in chain:
+            loop = " → ".join(self._name(item) for item in (*chain, resolved))
+            raise ValueError(f"include : boucle d'inclusion ({loop})")
+        if len(chain) >= self.MAX_DEPTH:
+            raise ValueError(f"include : plus de {self.MAX_DEPTH} niveaux d'inclusion à partir de {self._name(resolved)}")
+        if resolved in self._loaded:   # deux motifs qui se recouvrent : un fichier n'est lu qu'une fois
+            return
+        self._loaded.add(resolved)
+
+        with resolved.open(encoding="utf-8") as stream:
+            data = yaml.safe_load(stream)
+        if data is None:
+            data = {}
+        if not isinstance(data, dict):
+            raise ValueError(f"{self._name(resolved)} : un mapping YAML est attendu à la racine du fichier")
+        raw = data.pop("include", None)
+        patterns = [raw] if isinstance(raw, str) else ([] if raw is None else raw)
+        if not isinstance(patterns, list) or not all(isinstance(item, str) and item for item in patterns):
+            raise ValueError(f"{self._name(resolved)} : « include » doit être un chemin ou une liste de chemins")
+
+        self._merge(self.merged, data, resolved, ())
+        for pattern in patterns:
+            for included in self._expand(resolved.parent, pattern):
+                self.load(included, (*chain, resolved))
+
+
+def read_config(path: Path) -> dict[str, Any]:
+    """Lit config.yaml et ses fichiers inclus (clé « include », motifs admis) : un seul dictionnaire."""
+    reader = _ConfigReader(path.resolve().parent)
+    reader.load(path)
+    return reader.merged
+
+
 def load_settings(path: Path) -> Settings:
-    """Lit config.yaml, puis le .env voisin s'il existe (identifiants MQTT)."""
-    with path.open(encoding="utf-8") as stream:
-        data: dict[str, Any] = yaml.safe_load(stream) or {}
+    """Lit config.yaml (et les fichiers qu'il inclut), puis le .env voisin s'il existe (identifiants MQTT)."""
+    data = read_config(path)
 
     # Les secrets ne sont jamais dans config.yaml : ils viennent de l'environnement.
     load_dotenv(path.parent / ".env")

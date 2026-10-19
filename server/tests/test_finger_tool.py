@@ -69,21 +69,22 @@ def test_project_config_loads() -> None:
     assert all(isinstance(number, int) and number >= 0 and name for number, name in users.items())
 
 
-def config_with_fingerprint(tmp_path: Path, section: str) -> Path:
-    """Copie de config.yaml dont la section fingerprint est remplacée (indépendant des doigts de l'utilisateur)."""
-    text = CONFIG.read_text(encoding="utf-8")
-    path = tmp_path / "config.yaml"
-    path.write_text(text[: text.index("\nfingerprint:")] + "\nfingerprint:\n" + section, encoding="utf-8")
-    return path
+def config_with_fingerprint(config: Path, section: str) -> Path:
+    """config.yaml copié dont la section fingerprint (conf/access.yaml) est remplacée : indépendant des doigts
+    de l'utilisateur."""
+    access = config.parent / "conf" / "access.yaml"
+    text = access.read_text(encoding="utf-8")
+    access.write_text(text[: text.index("\nfingerprint:")] + "\nfingerprint:\n" + section, encoding="utf-8")
+    return config
 
 
-def test_config_validation(tmp_path: Path) -> None:
-    good = config_with_fingerprint(tmp_path, "    users: {1: Denis, 2: Denis}\n")
+def test_config_validation(config_copy: Path) -> None:
+    good = config_with_fingerprint(config_copy, "    users: {1: Denis, 2: Denis}\n")
     assert load_settings(good).fingerprint.users == {1: "Denis", 2: "Denis"}
-    assert load_settings(config_with_fingerprint(tmp_path, "    users: {}\n")).fingerprint.users == {}
+    assert load_settings(config_with_fingerprint(config_copy, "    users: {}\n")).fingerprint.users == {}
     for wrong in ("{abc: Denis}", "{-1: Denis}", "{1: ''}"):
         with pytest.raises(ValueError, match="fingerprint.users"):
-            load_settings(config_with_fingerprint(tmp_path, f"    users: {wrong}\n"))
+            load_settings(config_with_fingerprint(config_copy, f"    users: {wrong}\n"))
 
 
 # --------------------------------------------------------------------------- phrases
@@ -131,7 +132,7 @@ def test_enroll_picks_the_free_slot_and_prints_the_config_line(caplog: pytest.Lo
                                                  ("done", None))})
     assert command_enroll(board, BOOK, "Marie", None) == 0
     assert board.sent[1] == {"cmd": "fp_enroll", "id": 4}            # 1, 2, 5 nommés, 3 occupé
-    assert "A ajouter dans server/config.yaml" in caplog.text and "4: Marie" in caplog.text
+    assert "A ajouter dans server/conf/access.yaml" in caplog.text and "4: Marie" in caplog.text
 
 
 def test_enroll_reuses_a_slot_already_named_for_that_person_but_empty(caplog: pytest.LogCaptureFixture) -> None:
