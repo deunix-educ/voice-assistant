@@ -102,6 +102,46 @@ No Base64: MQTT payloads carry raw PCM bytes.
 
 ## 4. Installation
 
+### 4.0 Choosing your version
+
+Two versions live in this repository, on two branches. They do not mix: the voice code was removed from `fingerprint`.
+
+| | `main` | `fingerprint` |
+|---|---|---|
+| Who holds the board | the **voice** (voice profiles, diarization) | the **finger** placed on an R503 sensor |
+| Session start | wake word "Hey Mycroft" or PTT button | finger placed, or PTT button (no identity) |
+| Heavy dependencies | pyannote and torch (≈ 1.3 GB), openWakeWord | none |
+| Boards | ESP32 WROOM | ESP32 WROOM or ESP32-S3 Mini |
+| Configuration | versioned `server/config.yaml` | `config.example.yaml` template, ignored local copy, `server/conf/` |
+| systemd service | no | yes (`make server-install`) |
+
+**Getting the `fingerprint` version**
+
+```bash
+# new folder
+git clone -b fingerprint https://github.com/deunix-educ/voice-assistant.git     # "-b main" for the voice version
+cd voice-assistant
+
+# repository already cloned
+git fetch origin && git switch fingerprint && git pull
+```
+
+Then steps 4.1 and 4.2 below (`make install-system`, `make install-dev`, `make install-speech`, `make models`).
+ESP32-S3 Mini: `make fw-upload FW_ENV=esp32s3mini SERIAL_PORT=/dev/ttyACM0`.
+
+**Switching branches in the same folder: mind `server/config.yaml`.** On `fingerprint` it is ignored by git; on `main` it is
+tracked. As a result `git switch main` **replaces your file, without warning**, with the one from `main` (git overwrites ignored
+files), and `git switch fingerprint` then **deletes** it. Back it up first (`cp server/config.yaml
+~/config.yaml.fingerprint`) and put it back when you return. After going back to `main`, its voice dependencies must be
+reinstalled (`make install-diarization`, `make install-wakeword`).
+
+**Safer: one folder per version**, leaving the other untouched:
+
+```bash
+git worktree add ../voice-assistant-main main      # a copy of main next to this one, with its own files
+cd ../voice-assistant-main && make install-dev     # its venv, its server/.env (to fill in) and its models (make models)
+```
+
 ### 4.1 ESP32 firmware
 
 **Prerequisites:** a USB cable with data lines (not charge-only), port identified

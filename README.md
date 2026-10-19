@@ -101,6 +101,46 @@ Pas de Base64 : les payloads MQTT contiennent des octets PCM bruts.
 
 ## 4. Installation
 
+### 4.0 Choisir sa version
+
+Deux versions vivent dans ce dépôt, sur deux branches. Elles ne se mélangent pas : le code de la voix a été retiré de `fingerprint`.
+
+| | `main` | `fingerprint` |
+|---|---|---|
+| Qui tient la carte | la **voix** (profils vocaux, diarisation) | le **doigt** posé sur un capteur R503 |
+| Début de session | mot de réveil « Hey Mycroft » ou bouton PTT | doigt posé, ou bouton PTT (sans identité) |
+| Dépendances lourdes | pyannote et torch (≈ 1,3 Go), openWakeWord | aucune |
+| Cartes | ESP32 WROOM | ESP32 WROOM ou ESP32-S3 Mini |
+| Configuration | `server/config.yaml` versionné | modèle `config.example.yaml`, copie locale ignorée, `server/conf/` |
+| Service systemd | non | oui (`make server-install`) |
+
+**Obtenir la version `fingerprint`**
+
+```bash
+# dossier neuf
+git clone -b fingerprint https://github.com/deunix-educ/voice-assistant.git     # « -b main » pour la version avec voix
+cd voice-assistant
+
+# dépôt déjà cloné
+git fetch origin && git switch fingerprint && git pull
+```
+
+Puis les étapes 4.1 et 4.2 ci-dessous (`make install-system`, `make install-dev`, `make install-speech`, `make models`).
+ESP32-S3 Mini : `make fw-upload FW_ENV=esp32s3mini SERIAL_PORT=/dev/ttyACM0`.
+
+**Changer de branche dans le même dossier : attention à `server/config.yaml`.** Sur `fingerprint` il est ignoré par git ; sur
+`main` il est suivi. Résultat : `git switch main` **remplace votre fichier, sans prévenir**, par celui de `main` (git écrase
+les fichiers ignorés), et `git switch fingerprint` le **supprime** ensuite. Sauvegardez-le avant (`cp server/config.yaml
+~/config.yaml.fingerprint`) et remettez-le au retour. Après un retour sur `main`, ses dépendances de voix sont à réinstaller
+(`make install-diarization`, `make install-wakeword`).
+
+**Plus sûr : un dossier par version**, sans rien changer dans l'autre :
+
+```bash
+git worktree add ../voice-assistant-main main      # une copie de main à côté, avec ses propres fichiers
+cd ../voice-assistant-main && make install-dev     # son venv, son server/.env (à renseigner) et ses modèles (make models)
+```
+
 ### 4.1 Firmware ESP32
 
 **Prérequis :** câble USB avec les données (pas charge seule), port identifié

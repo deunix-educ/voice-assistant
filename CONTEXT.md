@@ -1167,3 +1167,11 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   l'index (`git rm --cached`, le fichier local reste sur le disque), ajoute `config.example.yaml`, `.gitignore`, le Makefile, les
   tests et la documentation. **Décision** : `server/conf/*.yaml` restent versionnés (pas de modèle `*.example.yaml` pour eux) ; à
   reprendre si l'utilisateur enregistre d'autres personnes (`conf/access.yaml` porte les noms).
+- **2026-10-19** — Question de l'utilisateur : « commande si je veux la version fingerprint » ; il accepte une section **README 4.0
+  « Choisir sa version »** (FR/EN : tableau main / fingerprint, `git clone -b fingerprint`, bascule, `git worktree`). Fusion dans `main`
+  **non faite** (avance rapide possible, sans conflit, 13 commits ; main perdrait voix/VAD/diarisation/mot de réveil) : en attente du choix
+  de l'utilisateur. **Incident de ma part** : une expérience de bascule, lancée dans un clone temporaire dont la création a échoué
+  (liens physiques inter-périphériques), s'est exécutée dans le dépôt réel : `git switch main` a **écrasé silencieusement le
+  `server/config.yaml` local** (git écrase les fichiers ignorés) puis le retour sur `fingerprint` l'a supprimé. Remis depuis la copie
+  prise avant le commit F8 (identique : `include`, `mqtt.host 192.168.1.4`, 7 pièces, Denis, 1 doigt), dépôt revenu sur `fingerprint`
+  @ `5dff1b3`, propre, service actif, 313 tests passent. Le README documente ce piège de bascule.
