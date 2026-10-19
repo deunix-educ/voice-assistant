@@ -262,7 +262,7 @@ TLS (option de l'étape 15, non activée).
 ### État au 2026-10-19 (branche `fingerprint`)
 
 - Branche `fingerprint` : **F1 à F4b et F5 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
-  `254fc09` (F4b) ; F5 est le commit qui suit (`git log`). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
+  `254fc09` (F4b), `dd268d2` (F5). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
   y compris « autre doigt = 3 éclairs rouges ».
 - `make test` : 272 tests, pyright 0 erreur, `make fw-check` SUCCESS pour `esp32dev` (RAM 36,9 % / Flash 33,2 %) et `esp32s3mini`
   (36,8 % / 32,8 %).
@@ -270,11 +270,11 @@ TLS (option de l'étape 15, non activée).
   `wake.enabled: false` sur la branche (le doigt remplace le mot de réveil). Pour commiter `config.yaml`, ne jamais embarquer cette
   adresse (index forcé par `git hash-object -w` + `git update-index --cacheinfo`).
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
-- Points ouverts : portail rendu plus robuste (hypothèse non prouvée d'un `WebServer` bloqué par une connexion inactive) et liste
-  des réseaux visibles dans le portail contre les fautes de frappe (proposé, sans réponse) ; schéma WROOM sans R503 ni LED de
-  démonstration (proposé, sans réponse) ; début de phrase parfois mal capté par Whisper (« est-elle » pour « allume ») ; signal Wi-Fi
-  de la S3 Mini moyen (−73 à −78 dBm) : la position de la carte compte ; schéma S3 non testé automatiquement contre
-  `pins_esp32_s3_mini.h`.
+- Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration) ;
+  **pas de liste de réseaux** dans le portail (le nom se recopie à l'identique).
+- Points ouverts : portail à surveiller (hypothèse non prouvée d'un `WebServer` bloqué par une connexion inactive, un premier essai a
+  échoué sans cause établie) ; début de phrase parfois mal capté par Whisper (« est-elle » pour « allume ») ; signal Wi-Fi de la S3
+  Mini moyen (−73 à −78 dBm) : la position de la carte compte ; schéma S3 non testé automatiquement contre `pins_esp32_s3_mini.h`.
 
 Essais de F5 sur la carte (2026-10-19, câblée en entier d'après `wiring-esp32-s3.svg`) :
 
@@ -1096,3 +1096,7 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   l'ESP32-S3 Mini : téléversement par l'USB natif, portail, R503, micro, ampli, LED, Wi-Fi, MQTT, sessions au doigt et au bouton,
   droits, doigt inconnu refusé. Commit de F5 : firmware (brochage par carte, deux environnements), Makefile (`FW_ENV`), schéma de
   câblage S3, README, BROCHAGE, CONTEXT. `server/config.yaml` laissé de côté (seule différence : l'adresse locale de l'utilisateur).
+- **2026-10-19** — Après le commit `dd268d2` (F5) : l'utilisateur renonce au complément du schéma WROOM et à la liste de réseaux du
+  portail. Le commit est sain (12 fichiers, message complet, pas de verrou). `server/config.yaml` a été indexé ensuite par
+  l'utilisateur (différence : `mqtt.host: 192.168.1.4`, son adresse locale) ; un `COMMIT_EDITMSG` vide indique une tentative de commit
+  non terminée. Rien d'autre commité, rien de poussé (la branche a 6 commits d'avance sur `origin/fingerprint`).
