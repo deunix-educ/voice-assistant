@@ -56,6 +56,19 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F7 | Le serveur démarre avec la machine : service systemd (`make server-install`) | **fait** (`311fde1`) | **oui (2026-10-19)** |
 | F8 | `server/config.example.yaml` versionné, `server/config.yaml` ignoré par git, créé par `make install` / `make config` | **fait** | **oui (2026-10-19)** |
 
+**Feuille de route des nœuds domotiques (préparée le 2026-10-19, rien n'est implémenté)** — détail, décisions et critères de fin dans
+`docs/FEUILLE-DE-ROUTE-NOEUDS.md`. Option A = firmware maison (PlatformIO, PubSubClient, ArduinoJson) ; option B = ESPHome. Les étapes
+D sont communes ; A et B s'appuient ensuite sur le même contrat MQTT.
+
+| # | Étape | État | Validé par l'utilisateur |
+|---|---|---|---|
+| D0 | Contrat MQTT « domotique v2 » : `home/<pièce>/<appareil>/state` retenu, présence `home/nodes/<nœud>/status`, droits ACL par pièce, nœud simulé | à faire | — |
+| D1 | `home.devices` : ce que possède chaque pièce (un fichier par pièce possible, F6) | à faire | — |
+| D2 | Le serveur lit les états et la présence (`home/+/+/state`, `home/nodes/+/status`) | à faire | — |
+| D3 | Réponses vraies : nœud hors ligne, « la lumière est-elle allumée ? », vérification après coup | à faire | — |
+| B1–B5 | ESPHome : outil isolé, modèles `nodes/*.yaml`, tests, premier nœud réel, exploitation (OTA) | à faire | — |
+| A1–A6 | Firmware maison : code partagé, `DeviceTable`, couche MQTT, sécurité, tests, portail/OTA/doc | à faire | — |
+
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
 un agent MQTT par machine (liste blanche d'actions définie sur la machine), Wake-on-LAN par le
@@ -208,6 +221,7 @@ server/conf/home.yaml, machines.yaml, access.yaml  sections home / machines / ac
 server/tests/conftest.py, test_config_include.py   copie de la config, 28 tests de l'inclusion [F6]
 server/voice-server.service        modèle d'unité systemd (@USER@, @SERVER_DIR@) [F7]
 server/config.example.yaml         modèle de configuration versionné ; config.yaml = copie locale ignorée [F8]
+docs/FEUILLE-DE-ROUTE-NOEUDS.md   feuille de route des nœuds domotiques, options A (maison) et B (ESPHome) [préparée]
 server/tests/test_config_example.py  modèle, .gitignore, make config / config-diff, message d'un config.yaml absent [F8]
 server/tests/test_service_unit.py  rendu de l'unité, systemd-analyze, garde de « make run » [F7]
 server/voice_server/mqtt_link.py   paho-mqtt 2.x, abonnement voice/+/...        [étape 4]
@@ -287,6 +301,13 @@ TLS (option de l'étape 15, non activée).
   (VAD, diarisation, profils vocaux, mot de réveil), `fingerprint` = version à empreinte (F1 à F8). Un correctif utile aux deux se
   reporte à la main (`git cherry-pick`), les deux historiques ayant divergé (13 commits d'écart, 77 fichiers). Le README §4.0
   explique comment choisir et comment changer de branche sans perdre `server/config.yaml`.
+- **Idée retenue pour plus tard (2026-10-19) : un firmware de nœud domotique maison** (PlatformIO, PubSubClient, ArduinoJson,
+  sur la même pile que la carte vocale : `MqttLink`, `WifiConfig`). Contrat actuel du serveur : publier `home/<pièce>/<appareil>/set`
+  (pièce en minuscules sans accents, `light` / `shutter` / `door`, JSON `{"action","by","board","session"}`, QoS 1, non retenu) ;
+  `DemoDevices` n'écoute PAS ce topic (la carte ne reçoit que `voice/<carte>/control` pour sa pièce). À prévoir : abonnement à
+  `home/<pièce>/+/set`, état retenu `home/<pièce>/<appareil>/state`, présence (LWT), droits MQTT par nœud dans `mosquitto/acl`
+  (aujourd'hui `home/#` en lecture-écriture), sécurité matérielle (impulsion bornée, état au démarrage). Alternative étudiée :
+  ESPHome (voir le journal). Feuille de route : `docs/FEUILLE-DE-ROUTE-NOEUDS.md`.
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
 - Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration) ;
   **pas de liste de réseaux** dans le portail (le nom se recopie à l'identique).
@@ -1181,3 +1202,19 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   @ `5dff1b3`, propre, service actif, 313 tests passent. Le README documente ce piège de bascule.
 - **2026-10-19** — **Fusion dans `main` : décision de l'utilisateur, « garder les 2 branches »** (aucune fusion, aucune étiquette
   posée). `main` reste à `fcefb61` (étape 16), `fingerprint` à `e740a2a`.
+- **2026-10-19** — Question de l'utilisateur sur un firmware domotique : il **retient pour plus tard le firmware maison** ; il demande
+  comment fonctionne ESPHome. Essai sans toucher au dépôt (venv jetable dans le scratchpad, ESPHome **2026.9.1**, Python 3.13.5,
+  203 Mo ; docs : Python ≥ 3.12) : un nœud ESP32-C3 qui suit notre contrat (`mqtt.on_json_message` sur `home/salon/light/set`, lampe
+  binaire, état retenu publié avec `mqtt.publish`) est **valide** (`esphome config`). `esphome compile --only-generate` produit dans
+  `.esphome/build/<nom>/` un **projet ESP-IDF en C++ (CMake)**, sans `platformio.ini` : `src/main.cpp` (484 lignes, lambdas du YAML
+  recopiées telles quelles), `src/esphome/` (seulement les composants utilisés, 2 Mo), `CMakeLists.txt`, `sdkconfig`, `partitions.csv`.
+  Non compilé (le premier build télécharge la chaîne ESP-IDF) : l'emplacement exact du binaire n'est pas vérifié. Constat : une
+  `light` crée par défaut son propre composant MQTT au schéma JSON de Home Assistant (`MQTTJSONLightComponent`), même avec
+  `command_topic: null` / `state_topic: null`. Rien dans le dépôt.
+- **2026-10-19** — **Feuille de route des nœuds domotiques préparée** (demande : « préparer une feuille de route pour pouvoir traiter
+  Option A et Option B plus tard ») : `docs/FEUILLE-DE-ROUTE-NOEUDS.md`. Étapes communes D0 à D3 (contrat MQTT v2 : état retenu,
+  présence avec testament, droits ACL par pièce avec `%u` et `%c`, nœud simulé, `home.devices`, lecture des états par le serveur,
+  réponses vraies), puis B1 à B5 (ESPHome) et A1 à A6 (firmware maison). Vérifié dans le dépôt pour la préparer : `MqttLink` du
+  firmware fabrique `voice/<id>/…` (à généraliser), `MqttLink` du serveur sait lire un filtre hors `voice/`, `mosquitto/acl` n'a
+  aucun droit pour des nœuds. Aucune étape lancée, aucune décision prise (compte par pièce, réponse immédiate, ordre A/B : propositions
+  seulement, §7 du document). Rien d'implémenté.
