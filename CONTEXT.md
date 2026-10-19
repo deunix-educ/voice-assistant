@@ -11,7 +11,8 @@
 Assistant vocal **100 % local** : ESP32 (micro INMP441) → MQTT → serveur Python
 (VAD, faster-whisper, diarisation, Piper) → MQTT → ESP32 (ampli MAX98357A).
 
-Prompt de référence : `prompt-assistant-vocal-esp32.md` (rôle, style, feuille de route, conventions).
+Prompt de référence : `prompt-assistant-vocal-esp32.md` (rôle, style, feuille de route, conventions) ; **supprimé du dépôt par
+l'utilisateur le 2026-10-19**, il reste dans l'historique : `git show d20976f:prompt-assistant-vocal-esp32.md`.
 
 ---
 
@@ -51,7 +52,8 @@ capteur R503 + bouton conservé) — mêmes règles de validation :
 | F4 | Serveur : droits par doigt, confirmation par le même doigt, pipeline sans VAD / diarisation / voix | **fait** | **oui (2026-10-18)** |
 | F4b | Suppression du code devenu inutile (VAD, diarisation, voix, mot de réveil, mains libres, firmware d'écoute continue, outils, extras) | **fait** | **oui (2026-10-18)** |
 | F5 | ESP32-S3 Mini (deuxième environnement PlatformIO) | **fait** (`dd268d2`) | **oui (2026-10-19)** |
-| F6 | Configuration en plusieurs fichiers : `include` (motifs admis), `server/conf/` | **fait** | **oui (2026-10-19)** |
+| F6 | Configuration en plusieurs fichiers : `include` (motifs admis), `server/conf/` | **fait** (`0d00b50`) | **oui (2026-10-19)** |
+| F7 | Le serveur démarre avec la machine : service systemd (`make server-install`) | **fait** | **oui (2026-10-19)** |
 
 **Exigence ajoutée par l'utilisateur (2026-09-30)** : l'assistant doit aussi pouvoir **commander des
 machines Linux du réseau**. Absente de la feuille de route du prompt. Proposition en discussion :
@@ -203,6 +205,8 @@ tools/wav_to_mqtt.py               WAV ou son pur -> carte, avec bilan          
 server/voice_server/settings.py    config.yaml (+ include, F6) + .env           [étape 4, F6]
 server/conf/home.yaml, machines.yaml, access.yaml  sections home / machines / access + fingerprint [F6]
 server/tests/conftest.py, test_config_include.py   copie de la config, 28 tests de l'inclusion [F6]
+server/voice-server.service        modèle d'unité systemd (@USER@, @SERVER_DIR@) [F7]
+server/tests/test_service_unit.py  rendu de l'unité, systemd-analyze, garde de « make run » [F7]
 server/voice_server/mqtt_link.py   paho-mqtt 2.x, abonnement voice/+/...        [étape 4]
 server/voice_server/audio_buffer.py  PCM borné, niveaux, écriture WAV           [étape 4]
 server/voice_server/session_manager.py  sessions, pertes, délais, WAV           [étape 4]
@@ -265,7 +269,7 @@ TLS (option de l'étape 15, non activée).
 
 ### État au 2026-10-19 (branche `fingerprint`)
 
-- Branche `fingerprint` : **F1 à F4b, F5 et F6 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
+- Branche `fingerprint` : **F1 à F4b, F5, F6 et F7 validées**. Commits : `67bd4a4` (F1), `19c935c` (F2), `0c7fae1` (F3), `6e432be` (F4),
   `254fc09` (F4b), `dd268d2` (F5). F5 validée par l'utilisateur le 2026-10-19 après essai sur la carte,
   y compris « autre doigt = 3 éclairs rouges ».
 - F6 (configuration en plusieurs fichiers) **validée par l'utilisateur le 2026-10-19** ; `make test` : 300 tests, pyright 0 erreur ;
@@ -1129,3 +1133,22 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   avec la phrase dite ; mesuré sur 100 synthèses : jamais sous 0,65 ; texte vide 0, sous-titre inventé ≤ 0,27, autre phrase 0,44 :
   refusés. 12 lancements de suite sans échec. `test_round_trip` (« appelles ») est stable : 40 sur 40. Pas de changement de code de
   production.
+- **2026-10-19** — **F7 écrite** (demande : « démarrer le serveur avec systemd »). `server/voice-server.service` (modèle) ;
+  `Makefile` : `server-install` (sudo, refuse si un serveur tourne), `server-uninstall`, `server-status`, `server-log` (sudo : le
+  compte n'est pas dans `adm`/`systemd-journal`), `server-unit` (affiche l'unité), `server-guard` (refuse `make run`/`run-echo`
+  si le service est actif : deux serveurs de même `client_id` se chassent du broker). `__main__.py` : `EXIT_SETUP = 78` pour les
+  erreurs de configuration, de dépendances ou de modèles ; l'unité a `Restart=on-failure` et `RestartPreventExitStatus=78` (un
+  plantage est relancé après 5 s, une configuration à corriger ne boucle pas). Le serveur démarre sans broker (paho
+  `connect_async` + reconnexion) et gère SIGTERM. Vérifié sans sudo : `systemd-analyze verify` (aucun avertissement), l'environnement
+  du service sous `systemd-run --user` avec les mêmes protections (cwd, `.env` lu, imports, `recordings/` et `logs/` inscriptibles,
+  modèles présents), la garde (`make server-install` refuse tant que `make run` tourne). 6 tests (`test_service_unit.py`).
+  **Non installé** : `sudo` demande un mot de passe, l'installation est à faire par l'utilisateur.
+- **2026-10-19** — Constat pendant F7 : à 12:45 `server/config.yaml` est revenu à la version du dépôt (`mqtt.host: 10.42.0.1`) alors qu'il
+  portait `192.168.1.4` (modification locale de l'utilisateur) ; pas de trace dans git (ni stash, ni reflog), probablement un
+  « annuler les modifications » de l'IDE. Le serveur lancé à la main (PID 113256, 11:12) a encore 192.168.1.4 en mémoire ; la carte vise
+  192.168.1.4 (NVS). Rien n'a été remis sans l'accord de l'utilisateur.
+- **2026-10-19** — **F7 validée** par l'utilisateur (« Je valide F7. on laisse mqtt.host »). Le service est **installé par l'utilisateur** :
+  `voice-server` actif et activé au boot, démarré à 15:14:42, 0 redémarrage (relevé par `systemctl show`). `mqtt.host` : la copie de
+  travail de `server/config.yaml` porte de nouveau `192.168.1.4` (modification locale, non commitée) ; le dépôt garde `10.42.0.1`.
+  `prompt-assistant-vocal-esp32.md` (fichier suivi par git) a été **supprimé volontairement par l'utilisateur** ; sa suppression
+  n'est pas dans le commit de F7 (reste dans l'historique : `git show d20976f:prompt-assistant-vocal-esp32.md`).

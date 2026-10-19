@@ -10,6 +10,11 @@ PIP         := $(VENV)/bin/pip
 PIO_VENV    := .pio-venv
 PIO         := $(PIO_VENV)/bin/pio
 FW_DIR      := firmware
+# Service systemd du serveur (étape F7) : compte qui le fait tourner, dossier server/ de ce dépôt.
+SERVICE      := voice-server
+SERVICE_USER ?= $(shell id -un)
+SERVER_DIR   = $(realpath server)
+RENDER_UNIT  = sed -e 's|@USER@|$(SERVICE_USER)|' -e 's|@SERVER_DIR@|$(SERVER_DIR)|' server/voice-server.service
 # Carte du firmware : esp32dev (ESP32 WROOM, défaut) ou esp32s3mini (ESP32-S3 Mini, port /dev/ttyACM0).
 FW_ENV      ?= esp32dev
 SERIAL_PORT ?= /dev/ttyUSB0
@@ -42,7 +47,7 @@ MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de s
 
 .DEFAULT_GOAL := help
 .PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech models \
-        say latency finger-list finger-enroll finger-delete speech-check transcribe run test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
+        say latency finger-list finger-enroll finger-delete speech-check transcribe run server-guard server-unit server-install server-uninstall server-status server-log test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
         fw-monitor clean
 
 ## ------------------------------------------------------------------ aide
@@ -177,11 +182,39 @@ transcribe:  ## Transcription et réponse du WAV OUT, sans ESP32 (étape 6)
 
 ## ----------------------------------------------------------------- serveur
 
-run:  ## Lance l'assistant vocal : répond à chaque session (étape 6, Ctrl-C pour arrêter)
+# Deux serveurs de même identifiant MQTT se chassent du broker en boucle : on refuse de lancer le second.
+server-guard:
+	@if systemctl is-active --quiet $(SERVICE) 2>/dev/null; then \
+		echo "Le service $(SERVICE) tourne deja : sudo systemctl stop $(SERVICE) avant de lancer le serveur a la main."; exit 1; fi
+
+run: server-guard  ## Lance l'assistant vocal : répond à chaque session (étape 6, Ctrl-C pour arrêter)
 	cd server && .venv/bin/python -m voice_server --config config.yaml
 
-run-echo:  ## Serveur en mode echo : chaque session est rejouee par l'ESP32 (etape 5)
+run-echo: server-guard  ## Serveur en mode echo : chaque session est rejouee par l'ESP32 (etape 5)
 	cd server && .venv/bin/python -m voice_server --config config.yaml --echo
+
+server-unit:  ## Affiche l'unité systemd du serveur telle qu'elle sera installée (rien n'est installé)
+	@$(RENDER_UNIT)
+
+server-install:  ## Installe le serveur comme service (sudo) : démarre au boot, relancé après un plantage (étape F7)
+	@if pgrep -f '[v]oice_server --config' >/dev/null; then \
+		echo "Un serveur tourne deja (make run ?) : arretez-le (Ctrl-C) avant, sinon les deux se chassent du broker."; exit 1; fi
+	@test -x $(SERVER_DIR)/.venv/bin/python || { echo "server/.venv absent : make install"; exit 1; }
+	$(RENDER_UNIT) | sudo tee /etc/systemd/system/$(SERVICE).service >/dev/null
+	sudo systemctl daemon-reload
+	sudo systemctl enable --now $(SERVICE)
+	@sleep 2; sudo systemctl --no-pager status $(SERVICE) | head -n 8
+
+server-uninstall:  ## Retire le service (le dépôt, la configuration et les enregistrements restent)
+	-sudo systemctl disable --now $(SERVICE)
+	sudo rm -f /etc/systemd/system/$(SERVICE).service
+	sudo systemctl daemon-reload
+
+server-status:  ## État du service du serveur
+	@systemctl --no-pager status $(SERVICE) | head -n 12
+
+server-log:  ## Journal du service du serveur (Ctrl-C pour quitter)
+	sudo journalctl -u $(SERVICE) -f
 
 test:  ## Exécute les tests Python
 	$(VENV)/bin/pytest server/tests -v

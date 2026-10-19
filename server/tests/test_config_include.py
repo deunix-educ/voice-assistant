@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from voice_server.__main__ import main
+from voice_server.__main__ import EXIT_SETUP, main
 from voice_server.settings import read_config
 
 SERVER_DIR = Path(__file__).resolve().parents[1]
@@ -213,7 +213,7 @@ def test_mqtt_host_stays_readable_by_the_makefile() -> None:
 def test_server_refuses_to_start_on_a_conflict_and_says_why(config_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
     """Deux fichiers définissent access.default : pas de trace d'appels, le message nomme les deux fichiers."""
     config_copy.write_text(config_copy.read_text(encoding="utf-8") + "\naccess:\n    default: standard\n", encoding="utf-8")
-    assert main(["--config", str(config_copy)]) == 1
+    assert main(["--config", str(config_copy)]) == EXIT_SETUP
     error = capsys.readouterr().err
     assert "configuration invalide" in error
     assert "« access.default » est défini à la fois dans" in error
@@ -222,5 +222,5 @@ def test_server_refuses_to_start_on_a_conflict_and_says_why(config_copy: Path, c
 
 def test_server_refuses_to_start_on_a_missing_included_file(config_copy: Path, capsys: pytest.CaptureFixture[str]) -> None:
     (config_copy.parent / "conf" / "home.yaml").unlink()
-    assert main(["--config", str(config_copy)]) == 1
+    assert main(["--config", str(config_copy)]) == EXIT_SETUP
     assert "fichier introuvable" in capsys.readouterr().err

@@ -307,7 +307,41 @@ make lint                           # typage pyright
 L'état exact du projet, étape par étape, est dans **[CONTEXT.md](CONTEXT.md)**.
 
 Étape courante : **terminée — les étapes 1 à 16 sont validées** (branche `main`).
-Branche `fingerprint` : F1 à F4b, F5 (ESP32-S3 Mini) et F6 (configuration en plusieurs fichiers) validées.
+Branche `fingerprint` : F1 à F4b, F5 (ESP32-S3 Mini), F6 (configuration en plusieurs fichiers) et F7 (serveur sous systemd) validées.
+
+### Branche `fingerprint` — étape F7 : le serveur démarre avec la machine (systemd)
+
+Le serveur devient un service : il démarre au boot (sans ouvrir de session), est relancé s'il plante, et son journal va dans
+`journalctl`. Même schéma que l'agent (`make agent-install`) : une unité modèle dans le dépôt, installée avec `sudo`.
+
+```bash
+make server-install    # installe et démarre le service (sudo) ; refuse si un « make run » tourne encore
+make server-status     # état du service
+make server-log        # journal en direct (Ctrl-C pour quitter)
+sudo systemctl restart voice-server   # après un changement de config.yaml, conf/*.yaml, .env ou du code
+make server-unit       # affiche l'unité qui serait installée, sans rien installer
+make server-uninstall  # retire le service (le dépôt et les enregistrements restent)
+```
+
+| Point | Détail |
+|---|---|
+| compte et dossier | le compte de celui qui lance `make server-install`, dans `server/` de ce dépôt : `config.yaml`, `conf/`, `.env`, `models/`, `recordings/` et `logs/` sont ceux de `make run` ; déplacer le dépôt demande de refaire `make server-install` |
+| démarrage | au boot, une fois le réseau en ligne ; si le broker est absent, le serveur démarre et se reconnecte seul (1 à 10 s entre deux essais) ; le chargement de Whisper et de Piper prend quelques secondes |
+| plantage | relancé après 5 s |
+| configuration ou modèles à corriger | **pas relancé** (code de sortie 78) : l'état est `failed` et `make server-log` dit quoi corriger |
+| arrêt | `sudo systemctl stop voice-server` : déconnexion propre du broker |
+| `make run` | refusé tant que le service tourne : deux serveurs de même identifiant MQTT se chassent du broker en boucle |
+| secrets | `.env` reste dans `server/`, lu par le serveur ; rien n'est copié dans l'unité ni dans le journal |
+
+Le service lit `server/config.yaml` **tel qu'il est au démarrage** : vérifiez `mqtt.host` avant d'installer (celui du dépôt est
+`10.42.0.1`, le Raspberry Pi).
+
+1. Arrêtez le serveur lancé à la main (Ctrl-C dans le terminal de `make run`), puis `make server-install` : `active (running)`.
+2. `make server-log` : `doigts : Denis (empreinte 1)`, puis la connexion au broker ; une session au doigt reçoit sa réponse.
+3. Plantage simulé : `sudo systemctl kill -s SIGKILL voice-server` ; le journal montre le redémarrage après 5 s.
+4. Redémarrez la machine, sans ouvrir de session : `make server-status` dit `active (running)` et la carte reçoit sa réponse.
+5. Erreur de configuration : `sudo systemctl stop voice-server`, écrivez `include: conf/absent.yaml` dans `config.yaml`,
+   `sudo systemctl start voice-server` : état `failed` (code 78), sans boucle de relance ; remettez la configuration et redémarrez.
 
 ### Branche `fingerprint` — étape F6 : la configuration en plusieurs fichiers
 

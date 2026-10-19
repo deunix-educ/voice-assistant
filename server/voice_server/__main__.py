@@ -40,6 +40,10 @@ from voice_server.settings import Settings, load_settings
 
 logger = logging.getLogger("voice_server")
 
+# Code de sortie quand la configuration ou les modèles sont à corriger (EX_CONFIG de sysexits.h). Le service
+# systemd (server/voice-server.service, RestartPreventExitStatus) ne relance pas le serveur dans ce cas.
+EXIT_SETUP = 78
+
 SWEEP_PERIOD_S = 0.2  # fréquence de vérification des sessions terminées ou muettes
 LOG_FILE_BYTES = 1_000_000  # journal fichier : 1 Mo par fichier...
 LOG_FILE_COUNT = 3          # ... et 3 anciens gardés : 4 Mo au plus
@@ -143,7 +147,7 @@ def worker(jobs: "queue.Queue[SessionResult | None]", handle: Callable[[SessionR
 
 
 def main(argv: list[str]) -> int:
-    """Lance le serveur jusqu'à Ctrl-C."""
+    """Lance le serveur jusqu'à Ctrl-C ou SIGTERM. Rend EXIT_SETUP si la configuration ou les modèles sont à corriger."""
     parser = argparse.ArgumentParser(description="serveur de l'assistant vocal")
     parser.add_argument("--config", type=Path, default=Path(__file__).resolve().parents[1] / "config.yaml")
     parser.add_argument("--echo", action="store_true",
@@ -155,7 +159,7 @@ def main(argv: list[str]) -> int:
     except (ValueError, OSError, yaml.YAMLError) as error:
         # Le journal n'est pas encore réglé (il dépend de la configuration) : message direct, sans trace d'appels.
         print(f"configuration invalide : {error}", file=sys.stderr)
-        return 1
+        return EXIT_SETUP
     setup_logging(settings)
     logging.getLogger("faster_whisper").setLevel(logging.WARNING)  # une ligne par transcription sinon
     logger.info("enregistrements dans %s", settings.recordings_dir)
@@ -175,10 +179,10 @@ def main(argv: list[str]) -> int:
             handle = make_assistant(settings, resampler, sender, link)
         except ImportError as error:
             logger.error("%s", error)
-            return 1
+            return EXIT_SETUP
         except FileNotFoundError as error:
             logger.error("%s : lancez 'make models'", error)
-            return 1
+            return EXIT_SETUP
         logger.info("mode assistant : posez un doigt enregistre (ou appuyez sur le bouton) et parlez")
 
     jobs: "queue.Queue[SessionResult | None]" = queue.Queue()

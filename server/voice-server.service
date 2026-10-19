@@ -1,0 +1,36 @@
+# Service systemd du serveur vocal (étape F7). Modèle : « make server-install » remplace @USER@ et @SERVER_DIR@
+# (l'utilisateur et le dossier server/ de ce dépôt), puis l'installe dans /etc/systemd/system.
+[Unit]
+Description=Serveur de l'assistant vocal (Whisper, Piper, MQTT)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+# Le serveur tourne sous le compte de l'utilisateur, dans server/ : config.yaml, conf/, .env, models/,
+# recordings/ et logs/ sont lus et écrits là, exactement comme avec « make run ».
+User=@USER@
+WorkingDirectory=@SERVER_DIR@
+ExecStart=@SERVER_DIR@/.venv/bin/python -m voice_server --config config.yaml
+Environment=PYTHONUNBUFFERED=1
+SyslogIdentifier=voice-server
+
+# Relancé après un plantage. Si le broker est absent au démarrage, le serveur n'en a pas besoin pour démarrer : il
+# se reconnecte seul (1 à 10 s entre deux essais). Pas relancé quand la configuration ou les modèles sont à corriger
+# (code 78 de voice_server/__main__.py) : un redémarrage n'y changerait rien, le journal dit quoi corriger.
+Restart=on-failure
+RestartSec=5
+RestartPreventExitStatus=78
+
+# SIGTERM : le serveur se déconnecte proprement du broker et journalise « arret du serveur ».
+TimeoutStopSec=20
+
+# Durcissement léger : rien n'a besoin d'élévation de droits, ni d'écrire hors du dépôt et de /tmp.
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+
+[Install]
+WantedBy=multi-user.target

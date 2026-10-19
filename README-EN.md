@@ -305,7 +305,41 @@ make lint                                # pyright type check
 The exact state of the project, step by step, lives in **[CONTEXT.md](CONTEXT.md)**.
 
 Current step: **done — steps 1 to 16 are validated** (`main` branch).
-`fingerprint` branch: F1 to F4b, F5 (ESP32-S3 Mini) and F6 (configuration in several files) validated.
+`fingerprint` branch: F1 to F4b, F5 (ESP32-S3 Mini), F6 (configuration in several files) and F7 (server under systemd) validated.
+
+### `fingerprint` branch — step F7: the server starts with the machine (systemd)
+
+The server becomes a service: it starts at boot (no login needed), is restarted if it crashes, and its log goes to
+`journalctl`. Same pattern as the agent (`make agent-install`): a template unit in the repository, installed with `sudo`.
+
+```bash
+make server-install    # installs and starts the service (sudo); refuses while a "make run" is still running
+make server-status     # service state
+make server-log        # live log (Ctrl-C to quit)
+sudo systemctl restart voice-server   # after changing config.yaml, conf/*.yaml, .env or the code
+make server-unit       # prints the unit that would be installed, installs nothing
+make server-uninstall  # removes the service (the repository and the recordings stay)
+```
+
+| Point | Detail |
+|---|---|
+| account and folder | the account of whoever runs `make server-install`, in this repository's `server/`: `config.yaml`, `conf/`, `.env`, `models/`, `recordings/` and `logs/` are the same as with `make run`; moving the repository means running `make server-install` again |
+| start | at boot, once the network is online; if the broker is absent the server starts and reconnects on its own (1 to 10 s between tries); loading Whisper and Piper takes a few seconds |
+| crash | restarted after 5 s |
+| configuration or models to fix | **not restarted** (exit code 78): the state is `failed` and `make server-log` says what to fix |
+| stop | `sudo systemctl stop voice-server`: clean disconnection from the broker |
+| `make run` | refused while the service runs: two servers with the same MQTT identifier kick each other out of the broker in a loop |
+| secrets | `.env` stays in `server/`, read by the server; nothing is copied into the unit or the log |
+
+The service reads `server/config.yaml` **as it is at start-up**: check `mqtt.host` before installing (the repository's value is
+`10.42.0.1`, the Raspberry Pi).
+
+1. Stop the server started by hand (Ctrl-C in the `make run` terminal), then `make server-install`: `active (running)`.
+2. `make server-log`: `doigts : Denis (empreinte 1)`, then the broker connection; a session by finger gets its answer.
+3. Simulated crash: `sudo systemctl kill -s SIGKILL voice-server`; the log shows the restart after 5 s.
+4. Reboot the machine without logging in: `make server-status` says `active (running)` and the board gets its answer.
+5. Configuration error: `sudo systemctl stop voice-server`, write `include: conf/absent.yaml` in `config.yaml`,
+   `sudo systemctl start voice-server`: state `failed` (code 78), no restart loop; put the configuration back and restart.
 
 ### `fingerprint` branch — step F6: the configuration in several files
 
