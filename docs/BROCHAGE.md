@@ -1,6 +1,7 @@
 # Brochage et câblage — ESP32-WROOM-32 (ou ESP32-S3 Mini, §1.5) + INMP441 + MAX98357A
 
-Document de référence du câblage. Schémas visuels : [wiring.svg](wiring.svg) (ESP32 WROOM) et
+Document de référence du câblage. Schémas visuels : [wiring.svg](wiring.svg) (ESP32 WROOM, sans capteur),
+[wiring-esp32-wroom-fingerprint.svg](wiring-esp32-wroom-fingerprint.svg) (ESP32 WROOM avec le capteur R503 : le repli de la S3, §1.6) et
 [wiring-esp32-s3.svg](wiring-esp32-s3.svg) (ESP32-S3 Mini, avec le capteur R503)
 (clic droit → « Open Preview » dans VSCodium, ou ouverture dans un navigateur).
 
@@ -82,6 +83,11 @@ TX et RX sont **croisés** : le TX d'un côté va au RX de l'autre. Les couleurs
 revendeurs : se fier à l'étiquette du connecteur. GPIO 34 n'a pas de résistance interne, ce qui convient
 puisque le capteur pilote lui-même la ligne. ESP32-S3 Mini : voir §1.5.
 
+Schéma de **tout le montage** (micro, ampli, haut-parleur, capteur, bouton, LED, rails et découplage) :
+**[wiring-esp32-wroom-fingerprint.svg](wiring-esp32-wroom-fingerprint.svg)** (aperçu :
+[wiring-esp32-wroom-fingerprint.png](wiring-esp32-wroom-fingerprint.png)). Ce câblage du capteur est celui des étapes F1 à F4,
+**validées sur la WROOM le 2026-10-18**. Passer de la S3 à la WROOM, ou l'inverse : §1.6.
+
 ### 1.5 Carte ESP32-S3 Mini — branche `fingerprint`, étape F5
 
 Schéma complet, avec rails d'alimentation et découplage : **[wiring-esp32-s3.svg](wiring-esp32-s3.svg)** (aperçu : [wiring-esp32-s3.png](wiring-esp32-s3.png)).
@@ -137,6 +143,52 @@ firmware ne la pilote pas. D'où la LED d'état externe, comme sur la WROOM (ell
 **Moniteur série et téléversement** : pas de puce USB-série, la puce parle en USB directement (USB-Serial/JTAG). Le
 port s'appelle **`/dev/ttyACM0`** (pas `ttyUSB0`), et il disparaît et revient à chaque reset. Si le téléversement
 ne démarre pas tout seul : maintenir **BOOT**, appuyer sur **RESET**, relâcher RESET puis BOOT, et relancer.
+
+### 1.6 Repli : remplacer la S3 par la WROOM (ou l'inverse)
+
+La WROOM sert de carte de secours : mêmes composants, même firmware, même serveur. Seuls changent les **numéros de GPIO**
+et le téléversement. Schéma du montage complet sur la WROOM :
+**[wiring-esp32-wroom-fingerprint.svg](wiring-esp32-wroom-fingerprint.svg)**. Les valeurs ci-dessous sont celles des deux
+fichiers de brochage ([S3](../firmware/include/pins_esp32_s3_mini.h), [WROOM](../firmware/include/pins_esp32_wroom.h)).
+
+| Signal | S3 Mini | **WROOM** | Remarque côté WROOM |
+|---|---|---|---|
+| INMP441 `SCK` | 5 | **25** | |
+| INMP441 `WS` | 6 | **26** | |
+| INMP441 `SD` | 7 | **33** | |
+| MAX98357A `BCLK` | 13 | **27** | |
+| MAX98357A `LRC` | 12 | **14** | |
+| MAX98357A `DIN` | 11 | **22** | |
+| Bouton PTT (l'autre borne à GND) | 10 | **4** | |
+| LED d'état | 9 | **2** | la LED bleue de la carte est aussi sur GPIO 2 : la LED externe est facultative |
+| LED de démonstration | 8 | **21** | |
+| R503 jaune (TX du capteur) | 1 | **16** | `RX2` : croisé, le TX du capteur arrive sur un RX |
+| R503 marron (RX du capteur) | 2 | **17** | `TX2` |
+| R503 bleu (WAKEUP) | 4 | **34** | entrée seule, sans résistance interne : c'est le capteur qui pilote la ligne |
+| 5 V (ampli) | `5V` | **`VIN`** | |
+| 3,3 V (INMP441, R503 rouge et blanc) | `3V3` | **`3V3`** | |
+| Masse | `GND` | **`GND`** | l'une des deux broches `GND` |
+
+Si le montage utilise des rails de plaque d'essai (comme sur les schémas), **seuls trois fils partent de la carte vers les
+rails** (5 V, 3,3 V, masse) : les fils des modules vers les rails ne bougent pas.
+
+**Procédure**
+
+1. **Débrancher** l'USB des deux cartes, et l'alimentation 5 V si la S3 était alimentée par `5V`/`Vin` : on ne câble jamais sous tension (§7).
+2. Déplacer les fils **un signal à la fois**, dans l'ordre du tableau, de la S3 vers la WROOM. Garder le même code couleur
+   (§1.1 à §1.3b), puis raccorder 5 V, 3,3 V et masse.
+3. Faire les mesures du §8 (continuité du R503 comprise : lignes 8e à 8l), **carte débranchée**.
+4. Brancher la WROOM et téléverser : `make fw-upload` (c'est l'environnement par défaut, `esp32dev`, sur `/dev/ttyUSB0` ;
+   groupe `dialout`). Le démarrage doit afficher `# carte : ESP32 WROOM (esp32dev)`, puis `# empreinte : poignee de main : ok`
+   et `capacite 200 empreintes`.
+5. **Wi-Fi** : les identifiants sont gardés **dans la carte** (NVS). La WROOM a les siens, la S3 ne les lui transmet pas. Si
+   le réseau a changé depuis la dernière utilisation de la WROOM, refaire le portail : bouton PTT tenu à la mise sous tension
+   (`WIFI_CONFIG_HOLD_MS`, 3 s), réseau `VoiceAssist-Config`, page http://192.168.4.1.
+6. **Une seule carte à la fois** sur le broker : les deux s'appellent `esp32-01`, elles s'éjecteraient l'une l'autre.
+7. Rien à changer côté serveur. Les **empreintes restent dans le capteur** : le R503 déplacé garde ses doigts, il n'y a rien à
+   réenregistrer.
+
+Pour revenir à la S3, faire l'inverse avec la même table.
 
 ### 1.4 Haut-parleur
 
@@ -390,6 +442,22 @@ bout du fil : une soudure sèche laisse passer le fil mais pas le signal.
 | 8c | pastille `L/R` du module ↔ `GND` | passant |
 | 8d | `GPIO 33` ↔ `GND` | **coupé** |
 
+### Capteur R503 (branche `fingerprint`, ESP32 WROOM)
+
+Même consigne : carte **hors tension**, mesure sur le connecteur ou la soudure du capteur. Les numéros de GPIO sont ceux
+de la WROOM (§1.3b) ; sur la S3, voir la table du §1.5.
+
+| # | Mesure | Attendu |
+|---|---|---|
+| 8e | `R503 rouge` ↔ `ESP32 3V3` | passant |
+| 8f | `R503 blanc` ↔ `ESP32 3V3` | passant |
+| 8g | `R503 noir` ↔ `ESP32 GND` | passant |
+| 8h | `R503 rouge` ↔ `GND` | **coupé** (sinon court-circuit : le 3,3 V de la carte tombe) |
+| 8i | `R503 jaune` ↔ `GPIO 16` | passant |
+| 8j | `R503 marron` ↔ `GPIO 17` | passant |
+| 8k | `R503 bleu` ↔ `GPIO 34` | passant |
+| 8l | `GPIO 16` ↔ `GPIO 17` | **coupé** (jaune et marron ne se touchent pas) |
+
 Puis USB branché :
 
 | # | Mesure | Attendu |
@@ -398,9 +466,13 @@ Puis USB branché :
 | 10 | tension `VIN` / `GND` | 4,6 à 5,1 V |
 | 11 | tension `GPIO 4` / `GND`, bouton relâché | ≈ 3,3 V (pull-up interne) |
 | 12 | tension `GPIO 4` / `GND`, bouton appuyé | ≈ 0 V |
+| 13 | tension `R503 rouge` / `GND` | 3,2 à 3,4 V |
+| 14 | tension `GPIO 34` / `GND`, doigt absent | ≈ 3,3 V (le capteur tient la ligne haute au repos) |
+| 15 | tension `GPIO 34` / `GND`, doigt posé sur le capteur | ≈ 0 V |
 
 Le test 11 exige que le firmware soit déjà téléversé : le pull-up est activé par
-`pinMode(INPUT_PULLUP)`.
+`pinMode(INPUT_PULLUP)`. Les tests 14 et 15 supposent le fil blanc (3,3VT) alimenté : c'est lui qui alimente la détection de
+toucher. Le test décisif reste le démarrage de la carte : `# empreinte : poignee de main : ok`.
 
 ---
 
@@ -443,6 +515,9 @@ Ce tableau est celui de l'**ESP32 WROOM** ; celui de l'ESP32-S3 Mini est au §1.
 | 27 | MAX98357A `BCLK` | 2 |
 | 33 | INMP441 `SD` | 1 |
 | 21 | LED de démonstration domotique (« la lumière » de la pièce) | 11 |
+| 16 | R503 jaune (TX du capteur), `RX2` | F1 |
+| 17 | R503 marron (RX du capteur), `TX2` | F1 |
+| 34 | R503 bleu (WAKEUP), entrée seule | F1 |
 
 ### LED de démonstration (étape 11, facultative)
 
@@ -454,7 +529,7 @@ Courant : (3,3 V − 2,0 V) / 330 Ω ≈ 4 mA, bien sous les 12 mA conseillés p
 GPIO 21 est libre et sans rôle au démarrage (pas une broche de *strapping*). Elle
 figure « la lumière » de la pièce de la carte ; volets et porte sont simulés
 (état affiché sur la liaison série). Un module relais se brancherait au même endroit.
-Cette LED n'est pas dessinée sur `wiring.svg`.
+Cette LED n'est pas dessinée sur `wiring.svg` ; elle l'est sur les deux schémas avec le capteur R503.
 
 Les valeurs sont définies une seule fois, dans
 [firmware/include/config.h](../firmware/include/config.h). Toute modification de

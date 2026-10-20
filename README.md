@@ -56,8 +56,9 @@ On pose un doigt enregistré sur le capteur, on parle, on le lève : la session 
 
 ### Câblage
 
-**Schéma complet : [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM) ou **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, avec le capteur R503) — brochage détaillé,
-bilan de consommation et vérifications au multimètre : **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
+**Schéma complet : [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM, sans capteur), **[docs/wiring-esp32-wroom-fingerprint.svg](docs/wiring-esp32-wroom-fingerprint.svg)**
+(ESP32 WROOM avec le capteur R503, repli de la S3) ou **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, avec le capteur R503) — brochage détaillé,
+bilan de consommation, vérifications au multimètre et passage d'une carte à l'autre (§1.6) : **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
 
 ```
         ESP32                     INMP441 (micro)

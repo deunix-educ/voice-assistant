@@ -264,6 +264,7 @@ firmware/src/FingerprintEnrollment.h  enregistrement d'un doigt (automate)      
 firmware/src/FingerprintTrigger.h  doigt posé / reconnu / levé = session de parole [F3, sans Arduino]
 firmware/include/pins_esp32_wroom.h, pins_esp32_s3_mini.h  brochage et nom de chaque carte [F5]
 docs/wiring-esp32-s3.svg (+ .png)  schéma de câblage de la S3 Mini : rails, découplage, R503 [F5]
+docs/wiring-esp32-wroom-fingerprint.svg (+ .png)  schéma de la WROOM avec R503, LED de démonstration (repli de la S3)
 server/voice_server/fingerprint_book.py  emplacement du capteur → nom (config.yaml) [F2]
 tools/finger.py                    make finger-list|enroll|delete, par MQTT        [F2]
 server/tests/test_fingerprint_packet.py, test_fingerprint_enrollment.py, test_fingerprint_trigger.py,
@@ -309,7 +310,8 @@ TLS (option de l'étape 15, non activée).
   (aujourd'hui `home/#` en lecture-écriture), sécurité matérielle (impulsion bornée, état au démarrage). Alternative étudiée :
   ESPHome (voir le journal). Feuille de route : `docs/FEUILLE-DE-ROUTE-NOEUDS.md`.
 - Après `git merge main` : le firmware de `main` n'a pas le capteur ; relire `main.cpp` en cas de conflit.
-- Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration) ;
+- Décisions de l'utilisateur (2026-10-19) : le schéma WROOM (`wiring.svg`) **reste tel quel** (sans R503 ni LED de démonstration ;
+  le repli de la S3 a son propre schéma depuis le 2026-10-20, `wiring-esp32-wroom-fingerprint.svg`) ;
   **pas de liste de réseaux** dans le portail (le nom se recopie à l'identique).
 - Points ouverts : portail à surveiller (hypothèse non prouvée d'un `WebServer` bloqué par une connexion inactive, un premier essai a
   échoué sans cause établie) ; début de phrase parfois mal capté par Whisper (« est-elle » pour « allume ») ; signal Wi-Fi de la S3
@@ -1230,3 +1232,13 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   Non vérifié : carte alimentée sur Vin sans hôte USB (d'après `isPlugged()`, aucun blocage attendu). Le premier échec du portail
   (« AP ok, 192.168.4.1 impossible ») avait la même chronologie (trois lignes écrites avant `_server->begin()`, débloqué par mon
   ouverture du port) : probable, non prouvé. Autre constat du jour : le R503 ne répondait plus (fil débranché), il répond de nouveau.
+- **2026-10-20** — **Câblage du R503 sur la WROOM (repli de la S3)** (demande : « faire le wiring du fingerprint avec esp32 wroom au cas
+  où l'S3 tombe en panne »). Le brochage existait déjà (`pins_esp32_wroom.h` : GPIO 16, 17, 34 ; BROCHAGE §1.3b ; validé sur matériel aux
+  étapes F1 à F4, 2026-10-18) mais sans schéma, et `wiring.svg` doit rester tel quel. Ajouts : `docs/wiring-esp32-wroom-fingerprint.svg`
+  (montage complet : micro, ampli, haut-parleur, R503, PTT, LED d'état et de démonstration, rails, découplage ; même style que le schéma
+  de la S3 ; les liaisons DIN de l'ampli et WAKEUP du R503 traversent la carte et sont donc dessinées en pastilles étiquetées) ;
+  BROCHAGE §1.6 (table S3 → WROOM et procédure : identifiants Wi-Fi propres à chaque carte (NVS), une seule carte à la fois sur le
+  broker, empreintes gardées dans le capteur), §8 (mesures du R503 : lignes 8e à 8l et 13 à 15), §10 (GPIO 16, 17, 34), en-tête ;
+  README FR et EN. Vérifié : rendu relu à l'œil (deux séries de libellés qui se touchaient, corrigées) ; chacune des douze liaisons du
+  schéma comparée à `pins_esp32_wroom.h`, à la main (concordantes). Non vérifié : le montage réel de la WROOM d'après ce schéma (aucun
+  matériel touché) ; la cohérence schéma / brochage n'est pas testée automatiquement (comme pour le schéma de la S3).

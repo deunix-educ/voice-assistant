@@ -57,8 +57,9 @@ You put an enrolled finger on the sensor, speak, and lift it: the session lasts 
 
 ### Wiring
 
-**Full diagram: [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM) or **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, with the R503 sensor) — detailed pinout, power
-budget and multimeter checks (in French): **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
+**Full diagram: [docs/wiring.svg](docs/wiring.svg)** (ESP32 WROOM, no sensor), **[docs/wiring-esp32-wroom-fingerprint.svg](docs/wiring-esp32-wroom-fingerprint.svg)**
+(ESP32 WROOM with the R503 sensor, the fallback for the S3) or **[docs/wiring-esp32-s3.svg](docs/wiring-esp32-s3.svg)** (ESP32-S3 Mini, with the R503 sensor) — detailed pinout, power
+budget, multimeter checks and moving from one board to the other (§1.6), all in French: **[docs/BROCHAGE.md](docs/BROCHAGE.md)**.
 
 ```
         ESP32                     INMP441 (microphone)
