@@ -486,6 +486,7 @@ carte à l'autre garde ses doigts.
 | `/dev/ttyUSB0` absent | l'USB natif s'appelle `/dev/ttyACM0` (groupe `dialout`) |
 | le téléversement ne démarre pas | maintenir BOOT, appuyer sur RESET, relâcher RESET puis BOOT, relancer |
 | aucune ligne au démarrage | moniteur ouvert trop tard : le port disparaît à chaque reset ; la carte attend 3 s, puis jette les messages sans terminal |
+| S3 « hors ligne » tant qu'aucun terminal n'est ouvert | firmware d'avant le 2026-10-20 : `Serial.setTxTimeoutMs(0)` figeait le démarrage ; reflasher |
 | `ABSENT` pour le capteur | fils jaune et marron sur GPIO 1 et 2, croisés ; 3,3 V |
 | carte qui ne démarre plus | un fil sur GPIO 0, 3, 45 ou 46 (broches de démarrage) |
 | son déformé ou bruit | le cadrage Philips (`AMP_FORMAT_PHILIPS`) est vérifié sur S3 (bip propre) ; sinon l'essayer à `false` dans `config.h` |

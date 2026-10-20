@@ -177,6 +177,14 @@ static constexpr uint32_t CAPTURE_TASK_STACK_BYTES = 4096;
 /// Débit série : 921 600 baud = ~92 kB/s, largement au-dessus des 32 kB/s d'audio.
 static constexpr uint32_t SERIAL_BAUD = 921600;
 
+/**
+ * USB natif (ESP32-S3) : attente maximale d'un envoi quand le PC est branché mais qu'aucun programme n'a ouvert le
+ * port. Jamais 0 : le cœur Arduino 3.2.1 (HWCDC::write) y décrémente un compteur déjà à 0, qui déborde, et l'envoi
+ * ne rend plus la main avant l'arrivée d'un lecteur (démarrage figé, ni Wi-Fi ni MQTT). Passé ce délai, la sortie
+ * est coupée et les messages sont jetés jusqu'au prochain lecteur.
+ */
+static constexpr uint32_t SERIAL_TX_TIMEOUT_MS = 10;
+
 // -------------------------------------------------------- Configuration Wi-Fi (portail AP)
 
 /**

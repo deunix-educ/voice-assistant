@@ -485,6 +485,7 @@ fingers.
 | `/dev/ttyUSB0` missing | native USB is `/dev/ttyACM0` (group `dialout`) |
 | the upload does not start | hold BOOT, press RESET, release RESET then BOOT, retry |
 | nothing printed at startup | monitor opened too late: the port disappears at every reset; the board waits 3 s, then drops messages if no terminal is open |
+| S3 "offline" until a terminal is opened | firmware older than 2026-10-20: `Serial.setTxTimeoutMs(0)` froze the boot; reflash |
 | sensor `ABSENT` | yellow and brown wires on GPIO 1 and 2, swapped; 3.3 V |
 | board no longer boots | a wire on GPIO 0, 3, 45 or 46 (boot pins) |
 | distorted sound or noise | Philips framing (`AMP_FORMAT_PHILIPS`) is verified on the S3 (clean beep); otherwise try it set to `false` in `config.h` |

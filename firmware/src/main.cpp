@@ -660,9 +660,10 @@ void setup() {
     Serial.setRxBufferSize(SERIAL_RX_BUFFER_BYTES);  // avant begin(), sinon ignoré
     Serial.begin(SERIAL_BAUD);
 #if ARDUINO_USB_CDC_ON_BOOT
-    // USB natif (ESP32-S3) : sans terminal ouvert, la file d'émission se remplit ; chaque message attendrait
-    // alors 100 ms qu'un lecteur arrive. On jette plutôt les messages : l'audio ne doit jamais attendre.
-    Serial.setTxTimeoutMs(0);
+    // USB natif (ESP32-S3) : sans terminal ouvert, la file d'émission se remplit. Le premier message attend
+    // SERIAL_TX_TIMEOUT_MS, puis la sortie est coupée et les suivants sont jetés : l'audio n'attend pas un lecteur.
+    // (0 figerait le démarrage : voir config.h.)
+    Serial.setTxTimeoutMs(SERIAL_TX_TIMEOUT_MS);
 #endif
     // Hors chemin audio : le moniteur série se reconnecte après le reset de la
     // carte. Sans cette attente, les premières lignes de l'auto-test sont perdues.

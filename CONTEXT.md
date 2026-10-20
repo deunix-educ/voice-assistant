@@ -328,7 +328,7 @@ Essais de F5 sur la carte (2026-10-19, câblée en entier d'après `wiring-esp32
   192.168.1.104 sur `eno1`). Il faut soit le portail (PTT tenu ~7 s à la mise sous tension → `VoiceAssist-Config`,
   http://192.168.4.1), soit que l'utilisateur corrige `secrets.h` lui-même (**ne pas y toucher**).
 - Avertissements vus : `nvs_open failed: NOT_FOUND` (attendu, NVS vide) ; `HWCDC write failed due to waiting USB Host`
-  (probablement dû à ma lecture avec DTR bas, à revérifier avec `make fw-monitor`).
+  (**cause établie le 2026-10-20** : `Serial.setTxTimeoutMs(0)`, voir le journal ; corrigé).
 - Lecture série sans moniteur : ouvrir `/dev/ttyACM0` en **abaissant DTR/RTS redémarre la carte** (`rst:0x15 USB_UART_CHIP_RESET`,
   constaté deux fois, et il fait perdre le portail) ; en laissant pyserial à ses valeurs par défaut, pas de reset. `esptool.py` de
   PlatformIO ne tourne pas hors du téléversement (module `rich_click` absent de `~/.platformio/penv`).
@@ -1116,8 +1116,8 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   évités : 0, 3, 45, 46 (démarrage), 19, 20 (USB), 26 à 37 (flash/PSRAM) ; TX/RX (43/44) laissés libres. La LED WS2812 de la
   carte n'est pas pilotée (LED externe comme sur la WROOM). `platformio.ini` : `[env]` commun, `esp32dev` (défaut, `default_envs`)
   et `esp32s3mini` (carte `esp32-s3-devkitc-1`, flash 4 Mo, QIO, USB-Serial/JTAG par `ARDUINO_USB_CDC_ON_BOOT=1`) ; Makefile :
-  `FW_ENV` pour `fw-build`, `fw-check`, `fw-upload`. `main.cpp` : `Serial.setTxTimeoutMs(0)` en USB natif (un port sans terminal
-  ne doit pas bloquer la boucle), cause de reset `ESP_RST_USB`. `make fw-check` : WROOM RAM 36,9 % / Flash 33,2 %, S3 RAM 36,8 % /
+  `FW_ENV` pour `fw-build`, `fw-check`, `fw-upload`. `main.cpp` : `Serial.setTxTimeoutMs(SERIAL_TX_TIMEOUT_MS)` en USB natif (un port sans terminal
+  ne doit pas bloquer la boucle ; c'était 0 jusqu'au 2026-10-20, ce qui figeait le démarrage, voir le journal), cause de reset `ESP_RST_USB`. `make fw-check` : WROOM RAM 36,9 % / Flash 33,2 %, S3 RAM 36,8 % /
   Flash 32,8 %, sans avertissement. `DEVICE_ID` reste `esp32-01` pour les deux cartes (une seule à la fois sur le broker).
   **Non vérifié sur la carte** : lecture des étiquettes, téléversement par l'USB natif, comportement de l'I2S et de l'auto-test
   du micro sur S3 (`AMP_FORMAT_PHILIPS`, cadrage du micro), signal de touche du R503 sur GPIO 4, PSRAM, tenue des 3,3 V.
@@ -1218,3 +1218,15 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   firmware fabrique `voice/<id>/…` (à généraliser), `MqttLink` du serveur sait lire un filtre hors `voice/`, `mosquitto/acl` n'a
   aucun droit pour des nœuds. Aucune étape lancée, aucune décision prise (compte par pièce, réponse immédiate, ordre A/B : propositions
   seulement, §7 du document). Rien d'implémenté.
+- **2026-10-20** — **S3 : démarrage figé tant qu'aucun programme n'ouvre le port USB, corrigé.** Constat : la carte branchée à 15:05:55
+  ne s'est connectée à MQTT qu'à 15:12:09 (uptime 374 s, contre 5 à 35 s pour tous les démarrages du journal) ; un reset sans lecteur
+  la laissait « offline » plus de 60 s, et l'ouverture passive du port la débloquait aussitôt (avertissement `[71872][W][HWCDC.cpp:477]`
+  daté de cet instant). Cause : `Serial.setTxTimeoutMs(0)` (hypothèse « 0 = jeter les messages » fausse) ; dans le cœur Arduino 3.2.1,
+  `HWCDC::write` fait `tries = tx_timeout_ms` (0) puis `tries--` (`HWCDC.cpp:448` et `:469`) : le compteur non signé déborde, le test
+  `tries == 0` ne se déclenche plus, et l'envoi n'a de fin que si un lecteur arrive. Avec un lecteur ouvert, le même réglage coupait des
+  lignes (les « write failed » d'hier). Correction : `SERIAL_TX_TIMEOUT_MS = 10` dans `config.h`, commentaire de `main.cpp` corrigé.
+  Vérifié sur la S3 (même carte, MAC 90:DA:72:72:7A:9C) après téléversement : sans lecteur, en ligne à 7 s d'uptime ; reset avec lecteur
+  ouvert : 53 lignes, 0 avertissement HWCDC, auto-test du micro lisible, R503 en poignée de main « ok ». `make fw-check` WROOM : succès.
+  Non vérifié : carte alimentée sur Vin sans hôte USB (d'après `isPlugged()`, aucun blocage attendu). Le premier échec du portail
+  (« AP ok, 192.168.4.1 impossible ») avait la même chronologie (trois lignes écrites avant `_server->begin()`, débloqué par mon
+  ouverture du port) : probable, non prouvé. Autre constat du jour : le R503 ne répondait plus (fil débranché), il répond de nouveau.
