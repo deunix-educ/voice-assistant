@@ -160,7 +160,7 @@ fichiers de brochage ([S3](../firmware/include/pins_esp32_s3_mini.h), [WROOM](..
 | MAX98357A `LRC` | 12 | **14** | |
 | MAX98357A `DIN` | 11 | **22** | |
 | Bouton PTT (l'autre borne à GND) | 10 | **4** | |
-| LED d'état | 9 | **2** | la LED bleue de la carte est aussi sur GPIO 2 : la LED externe est facultative |
+| LED d'état | 9 | **2** | une LED bleue intégrée est sur GPIO 2 sur la DevKit V1, **pas sur toutes les cartes** (§1.7) : sans elle, LED externe, GPIO 2 → 330 Ω → anode, cathode à GND |
 | LED de démonstration | 8 | **21** | |
 | R503 jaune (TX du capteur) | 1 | **16** | `RX2` : croisé, le TX du capteur arrive sur un RX |
 | R503 marron (RX du capteur) | 2 | **17** | `TX2` |
@@ -189,6 +189,41 @@ rails** (5 V, 3,3 V, masse) : les fils des modules vers les rails ne bougent pas
    réenregistrer.
 
 Pour revenir à la S3, faire l'inverse avec la même table.
+
+### 1.7 Carte « ESP-32S » (NodeMCU-32S, 38 broches)
+
+Pas de nouveau brochage : c'est un ESP32 d'origine, comme le module WROOM-32. **Mêmes numéros de GPIO, même firmware,
+même environnement `esp32dev`** : prendre la colonne **WROOM** du §1.6 et le schéma
+[wiring-esp32-wroom-fingerprint.svg](wiring-esp32-wroom-fingerprint.svg). Les 12 GPIO du projet (2, 4, 14, 16, 17, 21, 22,
+25, 26, 27, 33, 34) sont tous sortis sur cette carte. **La position des broches varie d'un fabricant à l'autre : se fier
+aux étiquettes sérigraphiées, jamais au rang** (comme au début du §1).
+
+| Étiquette sur la carte | GPIO | À savoir |
+|---|---|---|
+| `5V` (parfois `VIN`) | — | alimentation de l'ampli MAX98357A |
+| `3V3` | — | INMP441, R503 (fils rouge et blanc) |
+| `GND` | — | trois broches, toutes reliées |
+| `IO25`, `IO26`, `IO33` | 25, 26, 33 | micro : `SCK`, `WS`, `SD` |
+| `IO27`, `IO14`, `IO22` | 27, 14, 22 | ampli : `BCLK`, `LRC`, `DIN` |
+| `IO16`, `IO17`, `IO34` | 16, 17, 34 | R503 : jaune, marron, bleu (WAKEUP) |
+| `IO4`, `IO2`, `IO21` | 4, 2, 21 | bouton PTT, LED d'état, LED de démonstration. **GPIO 2 : toutes les ESP-32S n'ont pas de LED intégrée dessus** ; sans elle, brancher la LED externe (GPIO 2 → 330 Ω → anode, cathode à GND) |
+| `SVP`, `SVN` | 36, 39 | entrées seules, inutilisées |
+| `TX`, `RX` | 1, 3 | USB-série : rien dessus |
+| `CLK`, `SD0`, `SD1`, `SD2`, `SD3`, `CMD` | 6 à 11 | reliées à la mémoire flash : **ne rien brancher** |
+
+**Puce de la carte essayée**, lue par `esptool` au téléversement (2026-10-21) : **ESP32-D0WDQ6 rév. v1.0**, **deux cœurs**,
+quartz 40 MHz, c'est la puce du module WROOM-32 / ESP-32S d'origine (l'utilisateur annonçait un WROOM-32D, puce ESP32-D0WD :
+même brochage, mêmes conséquences). Deux conséquences. Le firmware convient : il épingle la tâche audio et la
+tâche de capture sur le cœur 1 (`AUDIO_TASK_CORE`, `CAPTURE_TASK_CORE` dans [config.h](../firmware/include/config.h)), ce
+qu'une puce à un seul cœur ne permettrait pas. Et GPIO 16 et 17 (R503) sont libres (ils ne servent à la PSRAM que sur un
+module WROVER) : le R503 y a répondu sur cette carte.
+
+Sur **un autre clone « ESP-32S »**, vérifier la puce avant de câbler : la ligne `Features:` affichée par le téléversement
+(`make fw-upload`) doit contenir **Dual Core**. La liaison USB passe par un pont CP2102, CH340 ou CH9102 : le port est
+`/dev/ttyUSB0`.
+
+Source du tableau : fiche [NodeMCU-32S d'espboards.dev](https://www.espboards.dev/esp32/nodemcu-32s/) (liste des 38 broches
+et de leurs GPIO). **Non vérifié sur une carte réelle** : les étiquettes exactes varient selon les clones.
 
 ### 1.4 Haut-parleur
 
@@ -458,6 +493,18 @@ de la WROOM (§1.3b) ; sur la S3, voir la table du §1.5.
 | 8k | `R503 bleu` ↔ `GPIO 34` | passant |
 | 8l | `GPIO 16` ↔ `GPIO 17` | **coupé** (jaune et marron ne se touchent pas) |
 
+### Ampli MAX98357A (sortie audio, ESP32 WROOM)
+
+Mesure **sur les pastilles du module**, carte hors tension, comme pour la ligne `SD` du micro. Sur la S3, les GPIO sont
+13 (`BCLK`), 12 (`LRC`) et 11 (`DIN`) : table du §1.5.
+
+| # | Mesure | Attendu |
+|---|---|---|
+| 8m | `MAX98357A BCLK` ↔ `GPIO 27` | passant |
+| 8n | `MAX98357A LRC` ↔ `GPIO 14` | passant |
+| 8o | `MAX98357A DIN` ↔ `GPIO 22` | passant |
+| 8p | `GPIO 27` ↔ `GPIO 14`, puis `GPIO 14` ↔ `GPIO 22` | **coupé** (deux fils qui se touchent) |
+
 Puis USB branché :
 
 | # | Mesure | Attendu |
@@ -469,6 +516,7 @@ Puis USB branché :
 | 13 | tension `R503 rouge` / `GND` | 3,2 à 3,4 V |
 | 14 | tension `GPIO 34` / `GND`, doigt absent | ≈ 3,3 V (le capteur tient la ligne haute au repos) |
 | 15 | tension `GPIO 34` / `GND`, doigt posé sur le capteur | ≈ 0 V |
+| 16 | tension `MAX98357A Vin` / `GND`, **sur les broches du module** | 4,6 à 5,1 V |
 
 Le test 11 exige que le firmware soit déjà téléversé : le pull-up est activé par
 `pinMode(INPUT_PULLUP)`. Les tests 14 et 15 supposent le fil blanc (3,3VT) alimenté : c'est lui qui alimente la détection de
@@ -494,9 +542,12 @@ toucher. Le test décisif reste le démarrage de la carte : `# empreinte : poign
 | Son très faible même en criant | `SCK` et `WS` inversés | inverser GPIO 25 et GPIO 26 |
 | Signal haché, craquements réguliers | fils I2S trop longs | raccourcir à 10 cm |
 | L'ESP32 redémarre quand le son sort | alimentation insuffisante | §5, points 1 et 2 |
+| Aucun son (pas de bip au démarrage, pas de réponse), alors que le journal du serveur dit « lecture jouée » | l'ampli n'est pas alimenté, ou `BCLK` / `LRC` / `DIN` mal câblés, ou haut-parleur déconnecté | test 16 (4,6 à 5,1 V sur le module), tests 5, 8m à 8p, puis le haut-parleur sur `+` et `−` |
 | Téléversement impossible | LED sur GPIO 2 qui perturbe le boot | retirer la LED externe, utiliser celle de la carte |
 | Le HP souffle ou vibre en permanence dès la mise sous tension | broches I2S de sortie flottantes : l'ampli amplifie du bruit | firmware ≥ étape 1 : `silenceAmplifier()` les force à 0. Si le bruit persiste pendant le boot, relier `SD` de l'ampli à `GND`, ou ne pas l'alimenter avant l'étape 2 |
 | Sifflement aigu permanent | masse commune absente entre ampli et ESP32 | §7, point 3 |
+| `empreinte : ABSENT` alors que la ligne de touche réagit (`GPIO 34` tombe à 0 sous le doigt) et que `R503 rouge` / `GND` mesure 3,3 V | le processeur du capteur est muet : fil jaune coupé (câble, sertissage), ou capteur endommagé (alimenté au-delà de 3,3 V, ou usé) | continuité du fil jaune de bout en bout (8i), puis essai du capteur sur l'autre carte ; si rien ne répond, le remplacer (même modèle R503) |
+| `empreinte : ABSENT`, commande `0xE5` « réponse inattendue » en 3 à 4 ms | écho ou parasite sur la ligne : fils jaune et marron en contact, ou connecteur défectueux | 8l (`GPIO 16` ↔ `GPIO 17` coupé), changer les fils |
 
 ---
 

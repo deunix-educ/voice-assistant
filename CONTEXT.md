@@ -1242,3 +1242,25 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   README FR et EN. Vérifié : rendu relu à l'œil (deux séries de libellés qui se touchaient, corrigées) ; chacune des douze liaisons du
   schéma comparée à `pins_esp32_wroom.h`, à la main (concordantes). Non vérifié : le montage réel de la WROOM d'après ce schéma (aucun
   matériel touché) ; la cohérence schéma / brochage n'est pas testée automatiquement (comme pour le schéma de la S3).
+- **2026-10-21** — **Brochage pour une carte « ESP-32S »** (demande : « brochage pour un esp-32S », carte non précisée ni branchée ; lecture
+  retenue : NodeMCU-32S / module Ai-Thinker ESP-32S, 38 broches, ESP32 d'origine). Conclusion : **aucun nouveau brochage**, mêmes GPIO que la
+  WROOM, environnement `esp32dev` ; BROCHAGE §1.7 (étiquettes de la carte, broches 6 à 11 interdites, ordre physique non donné car variable
+  selon les clones) ; une ligne dans le tableau Matériel des README. Point d'attention relevé dans le code : l'audio et la capture sont
+  épinglés sur le **cœur 1** (`AUDIO_TASK_CORE`, `CAPTURE_TASK_CORE`) : une puce monocœur ne conviendrait pas. **Levé le jour même** :
+  l'utilisateur annonce un **ESP32-WROOM-32D** ; **lu au téléversement de la WROOM le 2026-10-21 : ESP32-D0WDQ6 rév. v1.0** (MAC
+  a4:cf:12:75:3b:78, 40 MHz), deux cœurs, GPIO 16 et 17 libres (le R503 y a répondu : session « Denis, empreinte 1, score 64 » à 18:11). Reste
+  dit dans BROCHAGE §1.7 pour les autres clones (chercher « Dual Core » dans la sortie du téléversement). Source du tableau : fiche
+  espboards.dev de la NodeMCU-32S (liste des 38 broches) ; ni le tableau ni le module n'ont été lus sur une carte réelle (le module est
+  celui que l'utilisateur annonce). Correction de mon schéma de la WROOM : « 30 broches » retiré du titre (le firmware dit 38, BROCHAGE dit 30 : on ne tranche pas).
+- **2026-10-21** — **Essai de la WROOM (repli de la S3) : tout fonctionne sauf le R503, à remplacer.** WROOM reflashée avec le firmware actuel
+  (`make fw-upload`, `# carte : ESP32 WROOM (esp32dev)`). Bip absent au début : fil de l'ampli à rectifier par l'utilisateur, bip ensuite correct
+  (le firmware annonçait pourtant `speaker:true` et des lectures « jouées »). R503 : poignée de main réussie à 18:10-18:11 (session « Denis,
+  empreinte 1, score 64 »), puis « ABSENT » à presque tous les démarrages ; réponse « inattendue » en 3-4 ms (`0xE5`) avec les anciens fils Dupont,
+  disparue après leur remplacement (silence `0xE9`). Permuter jaune et marron ne change rien. Diagnostic par un **firmware temporaire, hors dépôt**
+  (flashé puis firmware normal restauré) : ligne de touche GPIO 34 haute au repos et à 0 sous le doigt (fils blanc et bleu bons) ; `R503 rouge` /
+  `GND` mesuré à 3,3 V par l'utilisateur ; 0 octet à 9 600, 19 200, 38 400, 57 600 et 115 200 bauds, dans les deux sens ; GPIO 16 et 17 jamais à
+  l'état haut avec un rappel vers le bas. **Le processeur du capteur est muet** ; l'utilisateur conclut que le capteur est mort et va le changer.
+  Non prouvé : fil jaune coupé dans le câble contre processeur mort (continuité du jaune non mesurée). **À la livraison** : câbler, vérifier la
+  poignée de main (`capacite 200 empreintes`, 0 empreinte), puis `make finger-enroll NAME=Denis ID=1` (deux poses du même doigt) : le capteur
+  neuf est vide, et `fingerprint.users: {1: Denis}` (server/conf/access.yaml) reste valable en gardant l'emplacement 1. D'ici là, le bouton PTT
+  suffit (session « personne inconnue », niveau `unknown`). Tableau de dépannage §9 de BROCHAGE complété (touche vivante et capteur muet ; `0xE5` en 3-4 ms).

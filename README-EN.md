@@ -47,7 +47,7 @@ You put an enrolled finger on the sensor, speak, and lift it: the session lasts 
 
 | Item | Detail |
 |---|---|
-| ESP32-WROOM-32 | two I2S peripherals: I2S0 as receiver, I2S1 as transmitter |
+| ESP32-WROOM-32 | two I2S peripherals: I2S0 as receiver, I2S1 as transmitter. An "ESP-32S" board (NodeMCU-32S, 38 pins) works too, same GPIOs: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.7 (in French) |
 | ESP32-S3 Mini (`fingerprint` branch) | same firmware, other pinout: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.5 (in French), environment `esp32s3mini` |
 | INMP441 | I2S microphone, **3.3 V**, L/R pin to GND (left channel) |
 | MAX98357A | mono class-D amplifier, **5 V**, SD tied to VIN, GAIN left floating (9 dB) |

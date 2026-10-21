@@ -46,7 +46,7 @@ On pose un doigt enregistré sur le capteur, on parle, on le lève : la session 
 
 | Élément | Détail |
 |---|---|
-| ESP32-WROOM-32 | deux périphériques I2S : I2S0 en réception, I2S1 en émission |
+| ESP32-WROOM-32 | deux périphériques I2S : I2S0 en réception, I2S1 en émission. Une carte « ESP-32S » (NodeMCU-32S, 38 broches) convient aussi, mêmes GPIO : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.7 |
 | ESP32-S3 Mini (branche `fingerprint`) | même firmware, autre brochage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.5, environnement `esp32s3mini` |
 | INMP441 | micro I2S, **3,3 V**, broche L/R à GND (canal gauche) |
 | MAX98357A | ampli classe D mono, **5 V**, SD à VIN, GAIN laissé libre (9 dB) |
