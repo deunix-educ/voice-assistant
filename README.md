@@ -582,7 +582,7 @@ tient le boîtier. Câblage : [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 
 
 | Message | Cause probable |
 |---|---|
-| `ABSENT (pas de reponse …)` | fils RX/TX inversés (les croiser), 3,3 V absent, mauvais débit |
+| `ABSENT (pas de reponse …)` | fils RX/TX inversés (les croiser), 3,3 V absent, mauvais débit, **soudure froide sur le fil jaune** (la continuité est bonne mais le capteur reste muet : cas réel du 2026-10-23). Le banc d'essai `make r503-test` (puis `make r503-monitor`) départage ces causes : [BROCHAGE §1.8](docs/BROCHAGE.md) |
 | `lue comme doigt POSE` sans doigt, ou « POSE » et « retiré » inversés | polarité du signal de touche : `FP_TOUCH_ACTIVE_LOW` dans `config.h` (`true` pour votre capteur : haut au repos, bas quand le doigt est posé) ; sinon fil bleu mal branché |
 | poignée de main ok mais pas de `doigt POSE` | fil bleu (WAKEUP) non branché, ou fil blanc (3,3VT) sans 3,3 V |
 | `mot de passe refuse` | le capteur a un mot de passe : `FP_PASSWORD` dans `config.h` |

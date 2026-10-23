@@ -581,7 +581,7 @@ holds the box. Wiring: [docs/BROCHAGE.md](docs/BROCHAGE.md) §1.3b (GPIO 16, 17 
 
 | Message | Likely cause |
 |---|---|
-| `ABSENT (pas de reponse …)` | RX/TX wires swapped (cross them), no 3.3 V, wrong baud rate |
+| `ABSENT (pas de reponse …)` | RX/TX wires swapped (cross them), no 3.3 V, wrong baud rate, **cold solder joint on the yellow wire** (continuity is fine but the sensor stays silent: a real case on 2026-10-23). The bench firmware `make r503-test` (then `make r503-monitor`) tells these apart: [BROCHAGE §1.8](docs/BROCHAGE.md) |
 | `lue comme doigt POSE` with no finger, or "POSE" and "retiré" swapped | touch signal polarity: `FP_TOUCH_ACTIVE_LOW` in `config.h` (`true` for your sensor: high at rest, low when a finger is on it); otherwise blue wire badly connected |
 | handshake ok but no `doigt POSE` | blue (WAKEUP) wire not connected, or white (3.3VT) wire without 3.3 V |
 | `mot de passe refuse` | the sensor has a password: `FP_PASSWORD` in `config.h` |

@@ -225,6 +225,47 @@ Sur **un autre clone « ESP-32S »**, vérifier la puce avant de câbler : la li
 Source du tableau : fiche [NodeMCU-32S d'espboards.dev](https://www.espboards.dev/esp32/nodemcu-32s/) (liste des 38 broches
 et de leurs GPIO). **Non vérifié sur une carte réelle** : les étiquettes exactes varient selon les clones.
 
+### 1.8 Banc d'essai du R503 seul (WROOM / ESP-32S) — départager une panne
+
+Firmware **indépendant** : [tools/r503-test/](../tools/r503-test/). Il ne contient aucun code de l'assistant (le protocole du
+capteur est réécrit en quelques lignes), donc un défaut du firmware principal ne peut pas fausser le diagnostic. Il
+remplace le firmware normal le temps de l'essai ; `make fw-upload` le rétablit.
+
+**Brochage** : les mêmes broches que §1.3b, donc le câblage déjà en place convient. Seul le R503 compte ; pour un essai propre,
+débrancher le reste (micro, ampli, bouton, LEDs).
+
+| Fil du R503 | Étiquette sur la carte | Place sur la carte, vue du dessus (USB en haut, antenne en bas) |
+|---|---|---|
+| Jaune (TX du capteur) | `IO16` (`RX2`) | côté gauche, 8ᵉ broche en partant du haut, juste sous `IO4` |
+| Marron (RX du capteur) | `IO17` (`TX2`) | côté gauche, 9ᵉ broche, juste sous `IO16` |
+| Bleu (WAKEUP) | `IO34` | côté droit, 5ᵉ broche en partant du bas (au-dessus de `SVN`, `SVP`, `EN`, `3V3`) |
+| Rouge **et** blanc | `3V3` | côté droit, dernière broche en bas |
+| Noir | `GND` | côté gauche, dernière broche en bas (ou côté droit, 6ᵉ depuis le haut) |
+
+Ne pas brancher `IO6` à `IO11` (reliées à la mémoire flash). La place des broches varie d'un clone à l'autre : **la sérigraphie
+fait foi**.
+
+**Essai.** `make r503-test` (téléverse), puis `make r503-monitor` (console, 115200 bauds). Un cycle dure environ 60 s et recommence
+seul ; le bouton `EN` de la carte le relance. Étape 2 (de 2 à 8 s après le reset) : poser un doigt sur le capteur. Étape 3
+(de 8 à 20 s) : **regarder l'anneau**, il doit faire rouge, bleu, violet, éteint, trois fois, une seconde chacun, en suivant
+les lignes `commande …` de la console. Étape 5 (si le capteur n'a pas répondu) : débrancher puis rebrancher le fil rouge.
+
+| Bilan affiché | Ce que ça veut dire | À faire |
+|---|---|---|
+| `CAPTEUR OK` (débit, fils) | le capteur répond ; la configuration et le nombre d'empreintes sont affichés | `make fw-upload`, puis `make finger-enroll NAME=… ID=1` si le capteur est neuf |
+| `LIGNE DE TOUCHE BASSE` | la touche n'est pas alimentée (fil blanc) ou le bleu touche la masse | mesurer blanc/noir au connecteur : 3,3 V |
+| `SILENCE TOTAL`, **anneau qui suit l'ordre** rouge, bleu, violet | le capteur reçoit et vit : le chemin de retour est coupé | fil **jaune** : continuité bout à bout (§8). Si elle est bonne, mesurer la tension du jaune **côté capteur**, débranché de `IO16`, capteur alimenté : **≈ 3,3 V stable** = sortie TX vivante, chercher du côté de la carte ; **≈ 0,5 à 1 V qui dérive** = la sortie TX du capteur ne pilote plus la ligne. **Refaire d'abord la soudure du fil jaune côté capteur** : une soudure froide passe le test de continuité et donne exactement ces symptômes (constaté le 2026-10-23 : capteur redevenu `CAPTEUR OK` après une nouvelle soudure, avec ses empreintes). Si rien ne change, et seulement alors, capteur à remplacer. Contre-épreuve avec une résistance de 4,7 à 15 kΩ entre `3V3` et le jaune : une sortie saine monte à 3,3 V, une liaison défaillante reste vers 1 V (retirer la résistance ensuite) |
+| `SILENCE TOTAL`, anneau qui s'allume par moments, **pas dans l'ordre** rouge, bleu, violet | contact instable (marron, rouge ou noir) ou capteur qui redémarre | bouger les fils pendant l'étape 3 pour voir s'il réagit ; changer ou souder le connecteur |
+| `SILENCE TOTAL`, anneau jamais allumé | pas de 3,3 V sur le rouge, ou capteur hors service | mesurer rouge/noir **au connecteur du capteur** ; 3,3 V présents : remplacer le capteur |
+| `LIGNE RX TENUE HAUTE` sans réponse | le capteur tourne mais ne comprend pas | fil **marron** coupé, ou adresse du module changée |
+| `ECHO` | ce qui part sur GPIO 17 revient sur GPIO 16 | fils jaune et marron en contact (ou boucle voulue, ci-dessous) |
+
+**Contre-épreuve de la carte** : débrancher les fils jaune et marron du capteur et relier `IO16` à `IO17` par un fil. Le banc
+doit annoncer `ECHO` : l'UART2 et les deux broches fonctionnent, la panne n'est donc pas du côté de la carte.
+
+Le banc n'émet jamais sur une ligne qu'un capteur vivant pilote (deux sorties face à face s'abîment) : si `IO17` est tenue haute
+et `IO16` non, il en conclut que le jaune et le marron sont inversés et essaie ce sens-là.
+
 ### 1.4 Haut-parleur
 
 | Caractéristique | Valeur conseillée |

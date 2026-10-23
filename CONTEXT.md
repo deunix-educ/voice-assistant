@@ -267,6 +267,7 @@ docs/wiring-esp32-s3.svg (+ .png)  schéma de câblage de la S3 Mini : rails, d�
 docs/wiring-esp32-wroom-fingerprint.svg (+ .png)  schéma de la WROOM avec R503, LED de démonstration (repli de la S3)
 server/voice_server/fingerprint_book.py  emplacement du capteur → nom (config.yaml) [F2]
 tools/finger.py                    make finger-list|enroll|delete, par MQTT        [F2]
+tools/r503-test/                   banc d'essai du R503 seul (projet PlatformIO indépendant) : make r503-test|r503-monitor
 server/tests/test_fingerprint_packet.py, test_fingerprint_enrollment.py, test_fingerprint_trigger.py,
     test_finger_tool.py            compilent les en-têtes du firmware avec g++      [F1-F3]
 server/                            squelette Python (modules à partir de l'étape 3)
@@ -1264,3 +1265,66 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   poignée de main (`capacite 200 empreintes`, 0 empreinte), puis `make finger-enroll NAME=Denis ID=1` (deux poses du même doigt) : le capteur
   neuf est vide, et `fingerprint.users: {1: Denis}` (server/conf/access.yaml) reste valable en gardant l'emplacement 1. D'ici là, le bouton PTT
   suffit (session « personne inconnue », niveau `unknown`). Tableau de dépannage §9 de BROCHAGE complété (touche vivante et capteur muet ; `0xE5` en 3-4 ms).
+- **2026-10-22** — **Banc d'essai du R503 seul sur la WROOM** (demande : tester le capteur à part, firmware indépendant, brochage à utiliser ;
+  carte vue sur le dessin NodeMCU-32S d'espboards.dev). Nouveau projet PlatformIO **`tools/r503-test/`** (platformio.ini + `src/main.cpp`), sans aucun code
+  du firmware principal, pour qu'un défaut de ce dernier ne fausse pas le diagnostic ; `make r503-test` (téléverse) et `make r503-monitor` (115200 bauds).
+  **Mêmes broches que §1.3b** (jaune→GPIO 16, marron→GPIO 17, bleu→GPIO 34, rouge+blanc→3V3, noir→GND), donc rien à déplacer. Cycle d'environ 45 s :
+  niveaux au repos (la ligne RX tirée vers le bas reste-t-elle haute ? alors le capteur la pilote), détecteur de doigt, poignée de main **et anneau ROUGE** à tous
+  les débits 9600 x N, écoute passive, bilan. **L'anneau est le test qui manquait** : si la commande d'anneau allume le capteur alors qu'aucune réponse ne revient,
+  c'est le fil jaune (ou GPIO 16) ; sans anneau, capteur ou alimentation du rouge. Le banc n'émet jamais sur une ligne qu'un capteur vivant pilote
+  (jaune et marron inversés détectés, sens croisé essayé). Contre-épreuve de la carte : GPIO 16 reliée à GPIO 17, le banc doit annoncer `ECHO`.
+  Si le capteur répond : capacité, débit, adresse et nombre d'empreintes sont affichés. Compile sans avertissement (`pio run -d tools/r503-test`).
+  **Premier essai sur la WROOM (R503 présumé mort, câblage F1 inchangé)** : GPIO 16 et 17 jamais hautes avec un rappel vers le bas, ligne de touche haute au
+  repos (20/20), aucun octet à aucun des 12 débits ni dans les deux sens de fils, aucune réponse à la commande d'anneau : bilan « SILENCE TOTAL », identique à
+  l'essai du firmware temporaire. Détecteur de doigt non vu, mais personne n'avait posé de doigt dans la fenêtre de 6 s : non conclu. **L'anneau n'a pas été
+  observé** : c'est le point qui départage fil jaune et capteur. Défaut du banc corrigé en route : le rappel vers le bas du test des niveaux restait actif quand
+  l'UART démarrait, et la ligne flottante y faisait lire un octet `00`, pris à tort pour un « parasite ». Désormais RX est tirée vers le haut avant d'ouvrir l'UART
+  (`openSensorPort`) et un ou deux octets nuls seuls sont écartés. **Observation de
+  l'utilisateur : « le rouge s'allume de temps en temps »** : le capteur reçoit donc au moins certaines commandes (un capteur mort n'allumerait jamais l'anneau), mais
+  sans jamais répondre ; le « pas toujours » de l'anneau à la mise sous tension va dans le même sens. Piste : **contact instable** (marron, rouge ou noir) ou capteur qui
+  redémarre, plus un chemin de retour (jaune) coupé. Étape 3 ajoutée au banc pour le trancher : anneau rouge, bleu, violet, éteint (x3), une commande par seconde,
+  console horodatée (le cycle passe à 5 étapes, environ 60 s) ; à observer : l'anneau suit-il l'ordre, et les fils bougés le font-ils réagir ?
+  **Résultat (utilisateur, 2026-10-22) : « les 3 couleurs en cascade marchent »** : le capteur **n'est pas mort**. Son processeur tourne et reçoit nos commandes à
+  57600 bauds par le fil marron (GPIO 17) ; la touche (bleu/blanc) et l'alimentation (rouge/noir) sont bonnes. **Seul le retour est muet** : GPIO 16 jamais
+  haute, 0 octet à 12 débits. Le diagnostic « capteur mort » de l'entrée précédente est **infirmé** ; restent le fil jaune (coupé ou mal serti dans le câble du capteur,
+  les deux duponts ayant déjà été changés), la sortie TX du capteur elle-même, ou GPIO 16 (peu probable, contre-épreuve §1.8 : relier 16 à 17). Mesure à faire :
+  tension du fil jaune côté capteur, débranché de GPIO 16, capteur alimenté (≈3,3 V = sortie TX vivante au repos, ≈0 V ou valeur qui dérive = jaune coupé ou TX HS).
+  **Mesures de l'utilisateur (2026-10-22)** : continuité du fil jaune bonne ; tension du jaune côté capteur (supposé débranché de GPIO 16, non reconfirmé) :
+  rouge-jaune 2,6 V, noir-jaune 0,5 à 1 V **qui dérive**, soit un jaune à environ 0,7 V au lieu de 3,3 V. Le fil étant bon et le capteur alimenté et vivant
+  (anneau, touche), **la sortie TX du capteur ne pilote plus la ligne** : capteur à remplacer, avec une conclusion différente de celle de l'entrée précédente
+  (le processeur et le récepteur marchent, c'est l'émetteur qui est HS). Confiance bonne, pas totale : une résistance de 10 kΩ du jaune vers 3V3 écarterait une
+  sortie à drain ouvert. Une mesure de ce type ne remplace pas la preuve par échange, qui reste à faire avec le capteur de remplacement (le banc affichera sa
+  configuration). **Précaution pour le remplaçant** : ne jamais croiser jaune et marron avec un capteur vivant (deux sorties face à face : l'essai de fils croisés
+  du firmware temporaire de la veille et la permutation à la main l'ont fait ; la panne les précède, donc ce n'est probablement pas la cause, mais le risque existe) ;
+  le banc actuel ne croise que si GPIO 16 n'est pas pilotée. Piste, non faite : résistance de 330 Ω en série sur chaque fil de données.
+  **Essai de la résistance de rappel (2026-10-22)** : 6 kΩ entre 3V3 et le fil jaune (la plage utile est 4,7 à 15 kΩ). Banc : toujours aucun octet, GPIO 16 lue 0/50 avec un
+  rappel vers le bas. Mesure de l'utilisateur, jaune côté capteur : « 3 V puis 2,3 V » entre jaune et rouge, **1 V entre jaune et noir**. Une sortie vivante, poussée à
+  3,3 V ou ouverte, aurait fait monter la ligne à 3,3 V par les 6 kΩ ; à 1 V, la broche **tire la ligne vers le bas** (résistance équivalente vers la masse ≈
+  6 kΩ x 1 / 2,3 ≈ 2,6 kΩ), ce qui cadre aussi avec le 0,5 à 1 V qui dérive de la mesure sans résistance, et avec GPIO 16 lue basse. **Conclusion (INFIRMÉE le 2026-10-23, voir « Résolu » plus bas) : l'étage de sortie TX du capteur est endommagé** (retenu bas ou fuyant) ; le processeur et le récepteur vivent, aucune réponse n'est possible. Capteur à remplacer, par le même modèle. Cause
+  inconnue (conflit de sorties lors d'une permutation, défaut d'origine ?). **Contrôle du capteur neuf avant de le brancher sur la carte** : alimenté seul (rouge et
+  blanc sur 3V3, noir sur GND), le jaune doit être à environ 3,3 V stable au multimètre, l'état normal d'une ligne série au repos (attendu, à confirmer sur le premier).
+  **État en fin de séance, en attente du R503 de remplacement** : la WROOM porte **le banc d'essai** (pas le firmware normal : l'assistant y est hors ligne, le bouton PTT ne
+  marche donc pas non plus) ; le firmware normal revient par `make fw-upload`. Le banc, `make r503-test|r503-monitor`, le §1.8 de BROCHAGE et cette entrée ne sont
+  **pas commités**. À la livraison : contrôle du jaune à 3,3 V capteur seul, câblage F1, `make r503-monitor` (attendu `CAPTEUR OK`), `make fw-upload`, `make finger-enroll NAME=Denis ID=1`.
+  **Résolu (2026-10-23) : l'utilisateur a « soigneusement vérifié et ressoudé TX »** (soudure du fil jaune côté capteur) ; le banc annonce aussitôt **`CAPTEUR OK`** : réponse valide à
+  57600 bauds, fils normaux, code 0x00, en 1 ms, à chaque commande (36 sur 36 en trois cycles) ; configuration `capacite 200 empreintes, securite 3, adresse FFFFFFFF` ;
+  **`1 enregistree(s) dans le capteur`** : l'empreinte d'origine est toujours là, **pas de nouvel enregistrement à faire**. **La panne était une soudure froide**
+  sur TX, pas un étage de sortie mort : elle expliquait le « pas toujours », la continuité « bonne » (un contrôle à faible courant passe une soudure froide), le jaune à 0,5-1 V et
+  le 1 V sous 6 kΩ. **Mon verdict « capteur à remplacer » était faux** (trop sûr de lui : une mesure compatible avec un étage mort l'était aussi avec une soudure douteuse ; il
+  fallait refaire la soudure avant de conclure) ; corrigé au §1.8 de BROCHAGE. Le capteur de remplacement commandé devient une pièce de rechange. Au passage, avec les 6 kΩ
+  encore en place, GPIO 16 et GPIO 17 se lisent toutes deux hautes avec un rappel vers le bas (le banc écrit « pilotée par quelque chose » pour les deux) : sans conséquence ici, la
+  logique de sens des fils (`txHigh && !rxHigh`) reste sur « normal ». **Vérifications suivantes (2026-10-23)** : 6 kΩ retirée ; détecteur de doigt vu (doigt détecté/retiré/redétecté, ligne GPIO 34 basse sous le doigt) ; GPIO 16 lue haute
+  (sortie TX du capteur au repos, normal), GPIO 17 tantôt haute tantôt basse selon le démarrage (le rappel du récepteur du capteur contre notre rappel vers le bas : lecture
+  ambiguë, sans conséquence). **Limite du banc, non corrigée** : si GPIO 17 se lit haute et GPIO 16 basse (capteur à TX muet et RX tiré haut), le banc croit les fils croisés et
+  n'essaie pas le sens normal, mais l'écrit (« Sens normal non essaye ») sans le rappeler dans le bilan. Le firmware normal est remis sur la WROOM (`make fw-upload`) :
+  poignée de main ok, 200 empreintes, 1 enregistrée, touche ok. Micro et ampli étaient débranchés pour l'essai : l'auto-test du micro échoue donc (« aucune moitié de trame ne
+  porte de données », SD flottante), c'est attendu. **Autre constat : la configuration Wi-Fi/broker en NVS a disparu** (hier `BPI_R3-2G`, broker 192.168.1.4 ; aujourd'hui
+  `(secrets.h)` : `Livebox-1040`, broker 192.168.1.104, compte anonyme) ; les deux tables de partitions mettent la NVS au même endroit (0x9000, 0x5000), la cause n'est pas
+  établie. Le serveur (`make run`/service) et `make finger-list` visent le broker 192.168.1.4 (Raspberry Pi 5, comptes exigés) : la carte n'y est pas, `finger-list` répond
+  « la carte ne répond pas ». À refaire par le portail de la carte (PTT tenu 3 s, AP `VoiceAssist-Config`, http://192.168.4.1 : SSID, mot de passe, broker, port, compte) ; secrets.h
+  n'est pas touché. **Rétabli le 2026-10-23 par l'utilisateur** (`BPI_R3-2G`, broker 192.168.1.4, IP 192.168.1.15, -78 dBm). Vérifié de bout en bout :
+  micro prêt, `make finger-list` → « 1 empreinte(s) sur 200 emplacements : Denis (empreinte 1) », et la session 3a4fab ouverte **par le doigt** (« Denis, empreinte 1, score 89 »),
+  lecture de la réponse jouée (25 chunks sur 25, premier son à 217 ms). Session silencieuse (RMS -60,9 dBFS, seuil -58) : personne n'a parlé, réponse « Je n'ai rien entendu ».
+  Le firmware suggère `MIC_GAIN = 64` (niveau faible), non appliqué. **Le R503 est réparé (soudure) : plus rien à remplacer.** Mode d'emploi, brochage avec la place des broches et tableau « bilan → action » : BROCHAGE §1.8.
+  Retour au firmware normal : `make fw-upload`. Le dessin d'espboards indique une LED sur GPIO 2 pour **ce** modèle ; le banc la fait suivre le doigt,
+  ce qui répond aussi à la question restée ouverte de la LED d'état (3 clignotements au démarrage = LED présente).

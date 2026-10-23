@@ -51,7 +51,7 @@ MQTT_AS      = @echo "(compte MQTT : $(if $(MQTT_USERNAME),$(MQTT_USERNAME) de s
 .DEFAULT_GOAL := help
 .PHONY: help install-system mosquitto-config mosquitto-docker mqtt-user agent-run agent-install agent-log mqtt-agents mqtt-watch mqtt-transcript mqtt-home mqtt-control venv install install-dev install-speech models \
         say latency finger-list finger-enroll finger-delete speech-check transcribe run config config-diff server-guard server-unit server-install server-uninstall server-status server-log test lint record play inspect play-esp tone-esp play-mqtt tone-mqtt run-echo pio-venv fw-build fw-check fw-upload \
-        fw-monitor clean
+        fw-monitor r503-test r503-monitor clean
 
 ## ------------------------------------------------------------------ aide
 
@@ -294,6 +294,12 @@ fw-upload:  ## Compile et téléverse le firmware de la carte FW_ENV
 
 fw-monitor:  ## Ouvre le moniteur série (Ctrl-C pour quitter)
 	$(PIO) device monitor -p $(SERIAL_PORT) -b $(BAUD)
+
+r503-test:  ## Téléverse le banc d'essai du R503 seul (WROOM) : remplace le firmware, « make fw-upload » le rétablit
+	$(PIO) run -d tools/r503-test -t upload --upload-port $(SERIAL_PORT)
+
+r503-monitor:  ## Console du banc d'essai du R503 (115200 bauds, Ctrl-C pour quitter)
+	$(PIO) device monitor -p $(SERIAL_PORT) -b 115200
 
 ## ------------------------------------------------------------------ nettoyage
 
