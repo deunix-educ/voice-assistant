@@ -130,22 +130,26 @@ static constexpr uint32_t BOOT_TONE_MS = 600;
 static constexpr int16_t BOOT_TONE_AMPLITUDE = 8192;
 
 /**
- * FIFO de lecture : 16384 octets = 8192 échantillons = 512 ms à 16 kHz.
- * Elle contient la réserve anti-gigue (PLAYBACK_START_MS) et encore 212 ms pour
+ * FIFO de lecture : 24576 octets = 12288 échantillons = 768 ms à 16 kHz.
+ * Elle contient la réserve anti-gigue (PLAYBACK_START_MS) et encore 318 ms pour
  * les rafales : après un retard, le réseau livre souvent plusieurs chunks d'un coup.
+ * (16384 octets, 512 ms, jusqu'au 2026-10-23 ; agrandie avec la réserve, qui ne laissait
+ * plus que 62 ms de rafale.)
  */
-static constexpr size_t PLAYBACK_FIFO_BYTES = 16384;
+static constexpr size_t PLAYBACK_FIFO_BYTES = 24576;
 
 /// Bloc lu par la tâche audio : 256 échantillons = 16 ms = 512 octets.
 static constexpr size_t PLAYBACK_BLOCK_SAMPLES = 256;
 
 /**
  * Tampon anti-gigue (étape 12) : réserve à constituer avant de jouer le premier
- * échantillon, et à reconstituer après une famine. 300 ms = 6 chunks = 9600 octets,
- * soit l'avance que le serveur envoie d'emblée : la lecture démarre dès qu'elle est
- * arrivée. Un retard réseau plus court que la réserve ne s'entend pas.
+ * échantillon, et à reconstituer après une famine. 450 ms = 9 chunks = 14400 octets,
+ * soit l'avance que le serveur envoie d'emblée (prefill_chunks de audio_sender.py, à
+ * garder égal) : la lecture démarre dès qu'elle est arrivée. Un retard réseau plus court
+ * que la réserve ne s'entend pas. Portée de 300 à 450 ms le 2026-10-23 : à -80 dBm, 5
+ * lectures sur 7 s'interrompaient ; coût : environ 150 ms avant le premier son.
  */
-static constexpr uint32_t PLAYBACK_START_MS = 300;
+static constexpr uint32_t PLAYBACK_START_MS = 450;
 
 /// Tâche audio : au-dessus de loop() (priorité 1), sur le cœur 1 (le Wi-Fi prendra le 0).
 static constexpr int AUDIO_TASK_PRIORITY = 5;

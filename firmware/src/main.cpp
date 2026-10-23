@@ -63,8 +63,10 @@ using SerialProtocol::FrameType;
 MicCapture mic(PIN_MIC_SCK, PIN_MIC_WS, PIN_MIC_SD);
 MicSelfTest selfTest(mic);
 AudioOutput speaker(PIN_AMP_BCLK, PIN_AMP_LRC, PIN_AMP_DIN);
-// Deux FIFO, stockage statique fourni par nous (+1 octet exigé par FreeRTOS).
-uint8_t playbackStorage[PLAYBACK_FIFO_BYTES + 1];
+// Deux FIFO, stockage fourni par nous (+1 octet exigé par FreeRTOS). Celui de la capture est statique ;
+// celui de la lecture est pris sur le tas au démarrage (setup), avant le Wi-Fi qui le fragmenterait : en
+// statique, les 24 Ko de la FIFO dépassaient de 4,5 Ko la DRAM statique de l'ESP32 WROOM.
+uint8_t* playbackStorage = nullptr;
 uint8_t captureStorage[CAPTURE_FIFO_BYTES + 1];
 AudioFifo playbackFifo;  ///< PC -> tâche audio -> ampli
 AudioFifo captureFifo;   ///< micro -> tâche de capture -> loop() -> réseau
@@ -716,8 +718,9 @@ void setup() {
                       static_cast<unsigned long>(BOOT_TONE_MS));
         speaker.playTone(BOOT_TONE_HZ, BOOT_TONE_MS, BOOT_TONE_AMPLITUDE);
 
-        if (!playbackFifo.begin(playbackStorage, PLAYBACK_FIFO_BYTES,
-                                PLAYBACK_BLOCK_SAMPLES * sizeof(int16_t))) {
+        playbackStorage = static_cast<uint8_t*>(malloc(PLAYBACK_FIFO_BYTES + 1));
+        if (playbackStorage == nullptr || !playbackFifo.begin(playbackStorage, PLAYBACK_FIFO_BYTES,
+                                                              PLAYBACK_BLOCK_SAMPLES * sizeof(int16_t))) {
             Serial.println("# ERREUR : FIFO de lecture impossible a creer");
         } else {
             playback.begin();

@@ -1328,3 +1328,15 @@ profils vocaux, enregistrements (wav/mp3), modèles, journaux et environnements 
   Le firmware suggère `MIC_GAIN = 64` (niveau faible), non appliqué. **Le R503 est réparé (soudure) : plus rien à remplacer.** Mode d'emploi, brochage avec la place des broches et tableau « bilan → action » : BROCHAGE §1.8.
   Retour au firmware normal : `make fw-upload`. Le dessin d'espboards indique une LED sur GPIO 2 pour **ce** modèle ; le banc la fait suivre le doigt,
   ce qui répond aussi à la question restée ouverte de la LED d'état (3 clignotements au démarrage = LED présente).
+- **2026-10-23** — **Essais de la WROOM avec le capteur réparé : niveau du micro bon, lecture saccadée à cause du Wi-Fi.** Demande : « il faut parler près pour avoir un
+  résultat correct, la réponse est parfois saccadée ». **Micro** : 6 essais à 60 puis 30 cm ; la parole captée est à −22/−35 dBFS en RMS (crête −17 à 60 cm), le niveau des sessions bien
+  transcrites ; **`MIC_GAIN = 4` conservé**. La suggestion `MIC_GAIN = 64` de fin de session est calculée sur une session où personne ne parle (bruit de la pièce) : à ignorer (correction
+  du firmware proposée, non faite). Les échecs viennent du timing (parole commençant 1,6 à 2 s après la pose du doigt, après l'anneau bleu ; doigt levé trop tôt ; un essai sans parole)
+  et de Whisper « small » sur des phrases d'environ 1 s (« Que l'air est-il ? »). **Lecture** : signal de la WROOM −75 à −85 dBm (−45 dBm le 2026-10-06) ; réamorçages sur 5 lectures sur 7
+  (4 % avant le 2026-10-21 ; 29 % puis 71 % depuis) ; **la carte perd par moments sa connexion MQTT** (« offline » puis « en ligne » avec la même durée de fonctionnement) et jette
+  des chunks du micro « faute de place » ; `WiFi.setSleep(false)` est déjà posé. Déplacer la carte (étape 1) n'a pas amélioré le signal (−79 à −82 dBm). **Étape 2 préparée, pas encore
+  téléversée** : réserve anti-gigue 300 → 450 ms (`PLAYBACK_START_MS` du firmware et `prefill_chunks` 6 → 9 de `audio_sender.py`, à garder égaux), FIFO de lecture 16384 → 24576 octets
+  (768 ms, 318 ms de rafale) ; le tampon statique dépassait de 4520 octets la DRAM statique de la WROOM : `playbackStorage` est maintenant pris sur le tas au démarrage (`malloc`, avant le
+  Wi-Fi). `make fw-check` SUCCESS pour `esp32dev` et `esp32s3mini`, 0 avertissement ; `test_audio_output_path.py` 11 passés (le test du banc de gigue exige `PYTHONPATH=tools`, indépendamment
+  de ce changement). Serveur : `prefill_chunks` est en dur (pas dans config.yaml) ; le service est système (`/etc/systemd/system/voice-server.service`), redémarrage par `sudo systemctl restart voice-server`.
+  Cette réserve n'agit que sur les saccades : elle ne répare ni les coupures MQTT ni la perte de chunks du micro, qui demandent un meilleur signal.

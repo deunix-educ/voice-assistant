@@ -45,7 +45,7 @@ class AudioSender:
         self,
         link: Publisher,
         audio: AudioSettings,
-        prefill_chunks: int = 6,
+        prefill_chunks: int = 9,
         sleep: Callable[[float], None] = time.sleep,
         clock: Callable[[], float] = time.monotonic,
     ) -> None:
@@ -53,8 +53,10 @@ class AudioSender:
         Args:
             link: lien MQTT.
             audio: format du système.
-            prefill_chunks: avance envoyée d'un coup ; 6 chunks = 300 ms, la FIFO
-                de l'ESP32 en contient 512.
+            prefill_chunks: avance envoyée d'un coup ; 9 chunks = 450 ms, la FIFO
+                de l'ESP32 en contient 768. À garder égal à PLAYBACK_START_MS du
+                firmware (config.h) : plus petit, la lecture attend ; plus grand, la
+                FIFO déborde.
             sleep, clock: injectables pour les tests.
         """
         self._link = link
